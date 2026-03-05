@@ -1,0 +1,9 @@
+node_modules/
+.env
+database/metadata.db
+.DS_Store
+*.log
+tmp/
+.gemini/
+.agent/
+brain/

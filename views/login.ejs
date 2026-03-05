@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResultPubli - Login</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body class="login-page">
+    <div class="login-container">
+        <div class="login-branding">
+            <h1>Result<span class="highlight">Publi</span></h1>
+            <p>Agente de planejamento de conteúdos</p>
+        </div>
+
+        <div class="login-card">
+            <h2>Acesso Restrito</h2>
+            <p class="login-description">Faça login com sua conta corporativa para acessar a ferramenta.</p>
+
+            <% if (typeof error !=='undefined' && error) { %>
+                <div class="error-banner">
+                    Acesso permitido apenas para contas @resultpubli.com.br
+                </div>
+                <% } %>
+
+                    <a href="/auth/google" class="btn-google">
+                        <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" alt="Google"
+                            style="width:18px; margin-right:10px;">
+                        Entrar com Google
+                    </a>
+        </div>
+
+        <footer class="login-footer">
+            Desenvolvido com ❤️ por Willian Gerei - 2026v.1
+        </footer>
+    </div>
+</body>
+
+</html>

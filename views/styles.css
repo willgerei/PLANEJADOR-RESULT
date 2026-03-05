@@ -1,0 +1,687 @@
+/* ResultPubli - Uxerflow Edition (High-Fidelity) */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+    /* Uxerflow Palette */
+    --bg-app: #F9FAFB;
+    --bg-card: #FFFFFF;
+    --bg-hover: #F3F4F6;
+
+    /* Purple/Violet Accents from Reference */
+    --primary: #A855F7;
+    --primary-dark: #6B21A8;
+    --primary-gradient: linear-gradient(135deg, #A855F7 0%, #6B21A8 100%);
+
+    /* Text */
+    --text-main: #111827;
+    --text-secondary: #6B7280;
+    --text-muted: #9CA3AF;
+
+    /* Borders & Shadows */
+    --border-soft: rgba(0, 0, 0, 0.04);
+    --shadow-subtle: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-card: 0 10px 40px -10px rgba(0, 0, 0, 0.03);
+    --shadow-float: 0 20px 25px -5px rgba(0, 0, 0, 0.04), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+
+    /* Layout */
+    --sidebar-width: 64px;
+    --radius-lg: 24px;
+    --radius-md: 16px;
+
+    --transition-smooth: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-stagger: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.6s ease;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-app);
+    color: var(--text-main);
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ── Sidebar (Slim & Minimal) ──────────────────────────────────────────────── */
+.sidebar {
+    width: var(--sidebar-width);
+    background-color: var(--bg-card);
+    border-right: 1px solid var(--border-soft);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 0;
+    z-index: 50;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.01);
+}
+
+.sidebar:hover {
+    width: 220px;
+}
+
+.sidebar-logo {
+    margin-bottom: 40px;
+    padding: 0 16px;
+}
+
+.sidebar-logo img {
+    width: 32px;
+    height: auto;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.05));
+}
+
+.sidebar nav {
+    flex: 1;
+    width: 100%;
+}
+
+.sidebar nav ul {
+    list-style: none;
+    width: 100%;
+    padding: 0 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sidebar nav a {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border-radius: 12px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: var(--transition-smooth);
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.sidebar nav a svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.sidebar nav a .nav-label {
+    margin-left: 16px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    opacity: 0;
+    transform: translateX(-10px);
+    transition: opacity 0.2s, transform 0.2s;
+}
+
+.sidebar:hover .nav-label {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.sidebar nav a:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-main);
+}
+
+.sidebar nav a.active {
+    background-color: var(--bg-hover);
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.sidebar-bottom {
+    padding: 0 12px 32px 12px;
+    /* Added bottom padding for UX spacing */
+    width: 100%;
+}
+
+.sidebar-bottom a {
+    border-radius: 12px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: var(--transition-smooth);
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.sidebar-bottom a svg {
+    width: 20px !important;
+    height: 20px !important;
+    min-width: 20px;
+    flex-shrink: 0;
+}
+
+.sidebar-bottom a .nav-label {
+    margin-left: 16px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    opacity: 0;
+    transform: translateX(-10px);
+    transition: opacity 0.2s, transform 0.2s;
+}
+
+.sidebar:hover .sidebar-bottom .nav-label {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* ── Main Canvas ───────────────────────────────────────────────────────────── */
+.main-canvas {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 24px 24px 0;
+    overflow: hidden;
+}
+
+.central-card {
+    flex: 1;
+    background-color: var(--bg-card);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    border: 1px solid var(--border-soft);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* Center horizontally */
+    position: relative;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+    width: 100%;
+}
+
+/* ── Header ── */
+.panel-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 32px;
+    position: sticky;
+    top: 0;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(8px);
+    z-index: 10;
+}
+
+.topbar-model {
+    background: var(--bg-hover);
+    padding: 8px 16px;
+    border-radius: 100px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-soft);
+}
+
+.topbar-model svg {
+    width: 14px;
+    height: 14px;
+    fill: var(--primary);
+}
+
+.topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.btn-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: var(--transition-smooth);
+}
+
+.btn-icon:hover {
+    background: var(--bg-hover);
+    color: var(--text-main);
+}
+
+.btn-pill {
+    padding: 8px 20px;
+    border-radius: 100px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.btn-pill-dark {
+    background-color: var(--text-main);
+    color: #fff;
+    border: none;
+}
+
+.btn-pill-dark:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+/* ── Dashboard Layout ── */
+.dashboard-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.dashboard-ctas {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto 60px auto;
+}
+
+.gemini-star-wrap {
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: center;
+}
+
+.gemini-symbol {
+    width: 72px;
+    /* Balanced size */
+    height: 72px;
+    /* Flat design - No animations or shadows as requested */
+}
+
+/* ── Login Page (Uxerflow Style) ─────────────────────────────────────────── */
+.login-page {
+    background-color: #0A0A0B;
+    /* Deep dark for login */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    min-height: 100vh;
+    width: 100vw;
+}
+
+.login-container {
+    width: 100%;
+    max-width: 440px;
+    text-align: center;
+    padding: 20px;
+    animation: fadeIn 0.8s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.login-branding h1 {
+    font-size: 2.5rem;
+    color: #FFFFFF;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+}
+
+.login-branding .highlight {
+    color: var(--primary);
+}
+
+.login-branding p {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin-bottom: 40px;
+}
+
+.login-card {
+    background: #121214;
+    padding: 40px;
+    border-radius: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    margin-bottom: 30px;
+}
+
+.login-card h2 {
+    color: #FFFFFF;
+    font-size: 1.4rem;
+    margin-bottom: 12px;
+}
+
+.login-description {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin-bottom: 32px;
+}
+
+.btn-google {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #FFFFFF;
+    color: #000000;
+    text-decoration: none;
+    padding: 14px;
+    border-radius: 14px;
+    font-weight: 600;
+    font-size: 1rem;
+    transition: var(--transition-smooth);
+}
+
+.btn-google:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+}
+
+.error-banner {
+    background: rgba(239, 68, 68, 0.1);
+    color: #EF4444;
+    padding: 12px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    margin-bottom: 24px;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.login-footer {
+    color: #4B4B4B;
+    font-size: 0.8rem;
+    margin-top: 20px;
+}
+
+.greeting-area {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.greeting-area h1 {
+    font-size: 2.2rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-main);
+}
+
+.greeting-area p {
+    font-size: 2.2rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.highlight-purple {
+    background: var(--primary-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* ── Central CTAs ── */
+.dashboard-ctas {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    width: 100%;
+    max-width: 500px;
+    margin-bottom: 60px;
+}
+
+.btn-hero {
+    flex: 1;
+    padding: 16px 24px;
+    border-radius: 18px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    transition: var(--transition-smooth);
+}
+
+.btn-hero-primary {
+    background: var(--text-main);
+    color: white;
+}
+
+.btn-hero-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+.btn-hero-secondary {
+    background: white;
+    color: var(--text-main);
+}
+
+.btn-hero-secondary:hover {
+    background: var(--bg-hover);
+}
+
+/* ── Staggered Cards ── */
+.trends-header {
+    width: 100%;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+.trends-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    width: 100%;
+}
+
+.trend-card {
+    background: var(--bg-hover);
+    border-radius: var(--radius-md);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 240px;
+    /* Increased to accommodate buttons */
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    border: 1px solid transparent;
+    opacity: 0;
+    transform: translateY(20px);
+    position: relative;
+    overflow: hidden;
+}
+
+.trend-card.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.trend-card:hover {
+    background: white;
+    border-color: var(--border-soft);
+    box-shadow: var(--shadow-float);
+    transform: translateY(-8px);
+}
+
+.trend-card .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+    /* Push to bottom */
+    padding-top: 16px;
+    opacity: 1;
+    /* Always visible */
+    transition: var(--transition-smooth);
+}
+
+.btn-trend {
+    flex: 1;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    text-align: center;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-trend-primary {
+    background: var(--primary);
+    color: white;
+}
+
+.btn-trend-secondary {
+    background: var(--bg-app);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-soft);
+}
+
+.btn-trend:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+}
+
+.trend-card .title {
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--text-main);
+    margin-bottom: 12px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.trend-card .icon {
+    width: 32px;
+    height: 32px;
+    background: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* ── Tab Content Container ── */
+.tab-pane {
+    display: none;
+    padding: 40px;
+}
+
+.tab-pane.active {
+    display: block;
+}
+
+/* ── Form Styling ── */
+.form-card {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.form-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.form-subtitle {
+    color: var(--text-secondary);
+    margin-bottom: 32px;
+}
+
+.input-group {
+    margin-bottom: 24px;
+}
+
+.input-label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+}
+
+input[type="text"],
+select,
+textarea {
+    width: 100%;
+    padding: 14px 18px;
+    border-radius: 14px;
+    border: 1px solid var(--border-soft);
+    background: var(--bg-hover);
+    font-family: inherit;
+    font-size: 1rem;
+    transition: var(--transition-smooth);
+    outline: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    background: white;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.1);
+}
+
+/* ── Animations Reference ── */
+.stagger-1 {
+    transition-delay: 0.1s;
+}
+
+.stagger-2 {
+    transition-delay: 0.2s;
+}
+
+.stagger-3 {
+    transition-delay: 0.3s;
+}
+
+.stagger-4 {
+    transition-delay: 0.4s;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1024px) {
+    .trends-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
