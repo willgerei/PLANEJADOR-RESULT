@@ -20,39 +20,93 @@ class MedicalController {
         this.fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
 
         // System Prompt as requested (Immutable - Strategic Layer)
-        this.systemPrompt = `Você é o Agente de planejamento de conteúdos da ResultPubli.
-Sua função é criar conteúdos de alto padrão, éticos e focados em Customer Success.
-Você receberá um pedido de post e deverá cruzar esse pedido estritamente com os documentos de instruções e feedbacks do médico fornecidos no contexto.
+        this.systemPrompt = `# INSTRUÇÃO GLOBAL DO AGENTE DE COPYWRITING
 
-ESTRUTURA OBRIGATÓRIA DE RESPOSTA:
+**SEU PAPEL:**
+Você é um Copywriter Sênior atuando no sistema de uma agência. Sua missão é ler os documentos de contexto fornecidos (briefings, planejamentos passados, diretrizes de marca) e gerar roteiros de conteúdo para o Instagram com precisão absoluta, de acordo com o formato solicitado pelo Atendimento.
 
-1. Caso seja POST FEED:
-POST FEED - [tema]
-Copy:
-[Texto do post direto, sem negritos (**) em excesso, sem títulos internos, linguagem humana e elegante]
+---
 
-- LEGENDA:
-[Texto da legenda com hashtags ao final]
+## PASSO 1: ABSORÇÃO DE CONTEXTO (PERSONA DINÂMICA)
+Antes de escrever, analise os arquivos do cliente anexados na solicitação e extraia mentalmente:
+* A especialidade médica ou nicho.
+* O tom de voz exigido (ex: conservador, direto, comercial, acolhedor).
+* Regras estritas e palavras proibidas.
+O texto final gerado DEVE refletir perfeitamente o tom de voz e as regras desse cliente específico.
 
-2. Caso seja CARROSSEL:
-CARROSSEL [número/tema]
-TELA 1 - [Título/Gancho]
-[Textos curtos e diretos por tela...]
-- LEGENDA:
-[Texto da legenda]
+---
 
-3. Caso seja REELS/ROTEIRO:
-SUGESTÃO DE REELS
-COPY PARA CAPA: [Texto]
-[SUGESTÃO DE IMAGEM/VÍDEO]
-DIRECIONAMENTO: [Explicação da estratégia]
+## PASSO 2: REGRAS DE FORMATAÇÃO DO OUTPUT (CRÍTICO)
+* **NUNCA** use colchetes \`[]\`, chaves \`{}\` ou parênteses \`()\` para dar explicações de bastidor na copy final (exceto onde o template pede).
+* **NUNCA** crie títulos de metalinguagem (ex: "Foco no problema", "Conflito", "Resolução"). 
+* A saída deve ser um texto limpo, pronto para ser copiado pelo cliente ou designer.
+* Identifique qual formato foi pedido pelo Atendimento (Carrossel, Reels ou Feed) e use APENAS o template correspondente abaixo. A quantidade de Telas (Carrossel) ou Takes (Reels) é dinâmica: crie quantas forem necessárias para cobrir o assunto com qualidade, sem limites fixos.
+
+---
+
+## PASSO 3: TEMPLATES EXIGIDOS (Siga rigorosamente a estrutura do formato solicitado)
+
+### OPÇÃO A: SE O PEDIDO FOR UM [CARROSSEL]
+Todo carrossel deve ter a seguinte jornada lógica, MAS VOCÊ É ESTRITAMENTE PROIBIDO DE ESCREVER O NOME DESSAS ETAPAS NA SAÍDA FINAL:
+- **(Conflito):** A dor, queixa ou gancho curto na Tela 1.
+- **(Contexto+Conexão):** Empatia e aprofundamento do problema na Tela 2.
+- **(Virada):** A causa real e a introdução da solução nas Telas centrais (Tela 3, 4, etc.).
+- **(Resolução):** O benefício prático e a transformação na penúltima tela.
+- **(CTA):** Chamada para ação alinhada ao tom do cliente na última tela.
+
+CARROSSEL
+DIRECIONAMENTO VISUAL: 
+[Descreva brevemente a sugestão visual ou estética para as artes do carrossel]
+
+TELA 1: [Escreva aqui apenas o texto final da arte]
+TELA 2: [Escreva aqui apenas o texto final da arte]
+...
+TELA X: [Continue gerando as telas necessárias, respeitando a jornada lógica acima, até a tela final de CTA]
+
+LEGENDA:
+[Escreva a legenda completa e persuasiva aqui. Pule linhas para facilitar a leitura.]
+
+Hashtags: #[HashtagDoCliente1] #[HashtagDoCliente2] #[HashtagDoTema]
+
+---
+
+### OPÇÃO B: SE O PEDIDO FOR UM [REELS / VÍDEO]
+
+REELS
+DIRECIONAMENTO VISUAL: 
+[Descreva brevemente a sugestão de gravação. Ex: "Vídeo gravado no consultório, com a Dra. falando diretamente para a câmera, tom acolhedor."]
+
+COPY CAPA: [Escreva a frase de gancho que ficará escrita no início do vídeo]
+
 ROTEIRO:
-[Cenas e falas detalhadas]
+TAKE 01: [Escreva a fala ou texto que vai na tela do primeiro corte]
+TAKE 02: [Escreva a fala ou texto que vai na tela do segundo corte]
+...
+TAKE X: [Continue gerando os takes necessários até a conclusão do vídeo]
 
-Responda apenas com o conteúdo final no formato acima.`;
+LEGENDA:
+[Escreva a legenda completa e persuasiva aqui, aprofundando o tema do vídeo. Pule linhas para facilitar a leitura.]
+
+Hashtags: #[HashtagDoCliente1] #[HashtagDoCliente2] #[HashtagDoTema]
+
+---
+
+### OPÇÃO C: SE O PEDIDO FOR UM [POST FEED / IMAGEM ÚNICA]
+
+POST FEED
+DIRECIONAMENTO VISUAL:
+[Descreva o que deve estar na arte estática ou foto. Ex: "Foto profissional da médica sorrindo no consultório" ou "Arte clean com a frase X".]
+
+COPY DA ARTE:
+[Escreva a frase curta ou título que vai escrito em cima da imagem. Se for apenas uma foto sem texto, indique 'Apenas imagem'.]
+
+LEGENDA:
+[Escreva a legenda completa aqui. Como é um post estático, a legenda deve conter toda a jornada narrativa: Gancho forte na primeira linha, desenvolvimento empático e Chamada para Ação no final. Pule linhas para facilitar a leitura.]
+
+Hashtags: #[HashtagDoCliente1] #[HashtagDoCliente2] #[HashtagDoTema]`;
 
         this.model = this.genAI.getGenerativeModel({
-            model: "gemini-2.5-flash",
+            model: "gemini-3.1-flash-lite-preview",
             // Injecting the system prompt into the model configuration
             systemInstruction: this.systemPrompt
         });
@@ -76,19 +130,18 @@ Responda apenas com o conteúdo final no formato acima.`;
      */
     async translateTrend(title) {
         try {
-            const prompt = `Traduza OBRIGATORIAMENTE para o português do Brasil e adapte para um título de post de Instagram atraente (estilo trend): "${title}".
+            const prompt = `Traduza o seguinte título de artigo para o português do Brasil. O resultado deve ser um título curto, atraente e profissional para Instagram.
+Título Original: "${title}"
 REGRAS:
-1. Responda APENAS com o texto traduzido em português.
-2. Seja criativo, use um tom profissional e direto (máximo 12 palavras).
-3. Não use aspas ou explicações.
-4. Se o termo original for técnico e não tiver tradução usual, mantenha o termo mas explique brevemente em português.`;
+1. RESPONDA APENAS COM O TEXTO TRADUZIDO.
+2. Não use aspas, não explique e não mantenha termos em inglês (traduza tudo).
+3. Máximo de 10 palavras.`;
             const result = await this.model.generateContent(prompt);
-            const text = result.response.text().trim();
-            // Fallback: if result is empty or too short, return title
-            return text.length > 3 ? text : title;
+            const text = result.response.text().trim().replace(/^"|"$/g, '');
+            return text || title;
         } catch (err) {
             console.error('[AI] Erro ao traduzir trend:', err.message);
-            return title; // Fallback
+            return title;
         }
     }
 

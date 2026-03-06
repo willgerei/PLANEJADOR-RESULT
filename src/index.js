@@ -16,7 +16,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // Trends Cache (30 min)
 let trendsCache = { data: null, timestamp: 0 };
-const CACHE_TTL = 30 * 60 * 1000;
+const CACHE_TTL = 0; // Disabled cache to ensure dynamic updates per session as requested
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -291,11 +291,12 @@ app.get('/api/trends', ensureAuthenticated, async (req, res) => {
         for (const url of urls) {
             const { data } = await axios.get(url);
             const $ = cheerio.load(data);
-            const category = url.includes('wellness') ? 'Wellness' : url.includes('hair') ? 'Cabelo' : 'Saúde';
+            // Normalize category names to Portuguese for consistent UI
+            const category = url.includes('wellness') ? 'Bem-estar' : url.includes('hair') ? 'Cabelo' : 'Saúde';
 
             // Scraper logic for both architectures
-            const selector = url.includes('theskimm') ? 'a.v3-card' : '.card';
-            const titleSelector = url.includes('theskimm') ? 'h2' : '.card__title-text';
+            const selector = url.includes('theskimm') ? 'a.group' : '.card';
+            const titleSelector = url.includes('theskimm') ? 'h3' : '.card__title-text';
 
             $(selector).slice(0, 5).each((i, el) => {
                 const title = $(el).find(titleSelector).text().trim();

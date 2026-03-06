@@ -510,8 +510,8 @@ body {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 240px;
-    /* Increased to accommodate buttons */
+    height: 260px;
+    /* Fixed height for consistency */
     cursor: pointer;
     transition: var(--transition-smooth);
     border: 1px solid transparent;
@@ -535,18 +535,18 @@ body {
 
 .trend-card .actions {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     margin-top: auto;
-    /* Push to bottom */
-    padding-top: 16px;
-    opacity: 1;
-    /* Always visible */
-    transition: var(--transition-smooth);
+    width: 100%;
+    align-items: center;
+    /* Keep buttons from overflowing their container on small widths */
+    min-width: 0;
 }
 
 .btn-trend {
-    flex: 1;
-    padding: 10px 12px;
+    flex: 1 1 0;
+    min-width: 0; /* allow flex items to shrink correctly */
+    padding: 10px 8px;
     border-radius: 10px;
     font-size: 0.75rem;
     font-weight: 600;
@@ -555,9 +555,10 @@ body {
     transition: var(--transition-smooth);
     text-align: center;
     text-decoration: none;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+    white-space: nowrap;
 }
 
 .btn-trend-primary {
@@ -566,7 +567,7 @@ body {
 }
 
 .btn-trend-secondary {
-    background: var(--bg-app);
+    background: var(--bg-card);
     color: var(--text-secondary);
     border: 1px solid var(--border-soft);
 }
@@ -577,28 +578,19 @@ body {
 }
 
 .trend-card .title {
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 600;
-    line-height: 1.4;
+    line-height: 1.5;
     color: var(--text-main);
-    margin-bottom: 12px;
+    margin-bottom: 8px;
     display: -webkit-box;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
+    -webkit-line-clamp: 4;
+    /* Allow more lines but keep it clean */
+    line-clamp: 4;
     -webkit-box-orient: vertical;
     overflow: hidden;
-}
-
-.trend-card .icon {
-    width: 32px;
-    height: 32px;
-    background: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
+    height: 5.8em;
+    /* Approximate 4 lines height */
 }
 
 /* ── Tab Content Container ── */
@@ -683,5 +675,27 @@ textarea:focus {
 @media (max-width: 1024px) {
     .trends-grid {
         grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .trends-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .trend-card {
+        height: auto;
+        padding: 18px;
+    }
+
+    .trend-card .actions {
+        flex-direction: column;
+        gap: 8px;
+        align-items: stretch;
+    }
+
+    .btn-trend {
+        width: 100%;
+        flex: 1 1 auto;
     }
 }

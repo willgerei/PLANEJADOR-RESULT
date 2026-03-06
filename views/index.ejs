@@ -73,7 +73,7 @@
                     <svg viewBox="0 0 24 24">
                         <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" />
                     </svg>
-                    Gemini 2.5 Flash
+                    Gemini 3.1 Flash Lite
                 </div>
                 <div class="topbar-actions">
                     <button class="btn-icon" title="Pesquisar"><svg width="16" height="16" viewBox="0 0 24 24"
@@ -115,7 +115,7 @@
                 <div class="dashboard-ctas">
                     <button class="btn-hero btn-hero-primary" onclick="switchTab(' orchestration-tab',
                             document.querySelector('a[title=Planejamento]'))">
-                            ✨ Criar Planejamento
+                            Criar Planejamento
                             </button>
                             <button class="btn-hero btn-hero-secondary"
                                 onclick="switchTab('admin-tab', document.querySelector('a[title=Clientes]'))">
@@ -123,7 +123,7 @@
                             </button>
                 </div>
 
-                <div class="trends-header">GET STARTED WITH A TRENDING TOPIC</div>
+                <div class="trends-header">COMECE COM UM TEMA EM ALTA</div>
                 <div class="trends-grid" id="trends-grid">
                     <!-- Cards will be injected here via JS -->
                     <div class="trend-card visible stagger-1">
@@ -293,10 +293,11 @@
                     const card = document.createElement('div');
                     card.className = `trend-card stagger-${i + 1}`;
                     card.innerHTML = `
-                        <div class="title">${t.title}</div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                             <span style="font-size:0.7rem; font-weight:700; color:var(--primary);">#${t.category}</span>
-                             <div class="icon" onclick="event.stopPropagation(); useTrendTheme('${t.title}')" title="Usar este tema">✨</div>
+                        <div>
+                            <div class="tags" style="margin-bottom:8px;">
+                                <span style="font-size:0.65rem; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:0.05em;">#${t.category}</span>
+                            </div>
+                            <div class="title">${t.title}</div>
                         </div>
                         <div class="actions">
                             <button class="btn-trend btn-trend-primary" onclick="event.stopPropagation(); useTrendTheme('${t.title}')">
