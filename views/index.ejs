@@ -254,6 +254,7 @@
 
     <script>
         let currentDoctorId = null;
+        let lastGeneratedDoctorId = null;
 
         document.addEventListener('DOMContentLoaded', () => {
             setGreeting();
@@ -345,8 +346,12 @@
             const data = await res.json();
             document.getElementById('loader').style.display = 'none';
             if (data.copy) {
+                lastGeneratedDoctorId = docId;
                 document.getElementById('generated-content').innerText = data.copy;
                 document.getElementById('step-result').classList.remove('hidden');
+                // hide feedback UI if previously opened
+                const fp = document.getElementById('feedback-panel');
+                if (fp) fp.classList.add('hidden');
             } else {
                 alert('Erro na geração.');
                 document.getElementById('btn-generate').style.display = 'block';
@@ -379,6 +384,102 @@
             alert('Enviando dados...');
             location.reload();
         }
+
+        /* Feedback Modal (Dark Theme) */
+        // Modal HTML (hidden by default)
+        (function insertFeedbackModal() {
+            if (document.getElementById('feedback-modal-overlay')) return;
+            const html = `
+<style>
+  #feedback-modal-overlay { position: fixed; inset: 0; background: rgba(13,14,16,0.8); display: none; align-items: center; justify-content: center; z-index: 1200; }
+  #feedback-modal { width:100%; max-width:720px; background:#1A1B1E; border-radius:12px; padding:20px; box-shadow:0 12px 30px rgba(0,0,0,0.6); color:#F4F4F2; border:1px solid rgba(255,255,255,0.02); }
+  #feedback-modal h3 { margin:0 0 8px 0; font-size:1.05rem; }
+  #feedback-modal p { margin:0 0 12px 0; color:#D1D1D0; font-size:0.9rem; }
+  #feedback-modal textarea { width:100%; background:#0D0E10; border:1px solid #6B2030; color:#F4F4F2; padding:12px; border-radius:8px; resize:vertical; min-height:120px; font-size:0.95rem; }
+  .feedback-actions { display:flex; gap:10px; margin-top:12px; align-items:center; }
+  .feedback-btn-cancel { background:transparent; border:1px solid rgba(255,255,255,0.06); color:#D1D1D0; padding:8px 12px; border-radius:8px; cursor:pointer; }
+  .feedback-btn-send { background:#550015; color:#F4F4F2; border:none; padding:10px 14px; border-radius:8px; cursor:pointer; font-weight:600; }
+  #feedback-modal .status { margin-left:8px; color:#D1D1D0; font-size:0.9rem; display:none; }
+</style>
+<div id="feedback-modal-overlay" aria-hidden="true">
+  <div id="feedback-modal" role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title">
+    <h3 id="feedback-modal-title">Enviar feedback</h3>
+    <p>Descreva o que deve ser ajustado ou observado no copy.</p>
+    <textarea id="feedback-modal-text" placeholder="Ex: reduzir o tom promocional; focar em benefícios clínicos..."></textarea>
+    <div class="feedback-actions">
+      <button id="feedback-modal-cancel" class="feedback-btn-cancel" type="button">Cancelar</button>
+      <button id="feedback-modal-send" class="feedback-btn-send" type="button">Enviar feedback</button>
+      <div id="feedback-modal-status" class="status">Enviando...</div>
+    </div>
+  </div>
+</div>`;
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = html;
+            document.body.appendChild(wrapper);
+        })();
+
+        // Client-side modal logic and submit
+        function openFeedbackModal() {
+            const overlay = document.getElementById('feedback-modal-overlay');
+            if (!overlay) return; overlay.style.display = 'flex'; overlay.setAttribute('aria-hidden', 'false');
+            document.getElementById('feedback-modal-text').focus();
+        }
+        function closeFeedbackModal() {
+            const overlay = document.getElementById('feedback-modal-overlay');
+            if (!overlay) return; overlay.style.display = 'none'; overlay.setAttribute('aria-hidden', 'true');
+            const status = document.getElementById('feedback-modal-status'); if (status) { status.style.display = 'none'; status.innerText = ''; }
+        }
+
+        // Intercept 'Revisar' button clicks and open modal
+        document.addEventListener('click', (ev) => {
+            const el = ev.target.closest && ev.target.closest('button, a');
+            if (!el) return;
+            const isReviewBtn = el.id === 'btn-review' || (el.innerText && el.innerText.trim().toLowerCase().includes('revisar'));
+            if (!isReviewBtn) return;
+            ev.preventDefault(); ev.stopPropagation(); openFeedbackModal();
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const btnCancel = document.getElementById('feedback-modal-cancel');
+            const btnSend = document.getElementById('feedback-modal-send');
+            const overlay = document.getElementById('feedback-modal-overlay');
+
+            if (btnCancel) btnCancel.addEventListener('click', (e) => { e.preventDefault(); closeFeedbackModal(); });
+            if (overlay) overlay.addEventListener('click', (e) => { if (e.target === overlay) closeFeedbackModal(); });
+
+            if (btnSend) {
+                btnSend.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    const statusEl = document.getElementById('feedback-modal-status');
+                    const ta = document.getElementById('feedback-modal-text');
+                    const doctorSelect = document.getElementById('doctor-select');
+                    const doctorId = doctorSelect && doctorSelect.value ? doctorSelect.value : null;
+                    if (!doctorId) return alert('Selecione um médico antes de enviar feedback.');
+                    const text = ta.value.trim(); if (!text) return alert('Digite o feedback antes de enviar.');
+
+                    if (statusEl) { statusEl.style.display = 'inline-block'; statusEl.innerText = 'Enviando...'; }
+                    btnSend.disabled = true;
+
+                    try {
+                        const resp = await fetch('/api/feedback', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ doctorId, feedbackText: text })
+                        });
+                        const data = await resp.json();
+                        if (resp.ok) {
+                            if (statusEl) { statusEl.innerText = 'Enviado ✓'; }
+                            setTimeout(() => { ta.value = ''; closeFeedbackModal(); btnSend.disabled = false; }, 700);
+                        } else {
+                            const err = data && data.error ? data.error : 'Falha ao enviar';
+                            if (statusEl) { statusEl.innerText = err; }
+                            btnSend.disabled = false;
+                        }
+                    } catch (err) {
+                        if (statusEl) statusEl.innerText = 'Erro de rede'; btnSend.disabled = false;
+                    }
+                });
+            }
+        });
     </script>
 </body>
 

@@ -169,15 +169,31 @@ app.post('/api/orchestrate', ensureAuthenticated, async (req, res) => {
 
 app.post('/api/feedback', ensureAuthenticated, async (req, res) => {
     const { doctorId, feedbackText } = req.body;
+    if (!doctorId || !feedbackText) return res.status(400).json({ error: 'doctorId and feedbackText are required.' });
 
     db.get(`SELECT feedback_doc_id FROM doctors WHERE id = ?`, [doctorId], async (err, row) => {
         if (err || !row) return res.status(500).json({ error: "Failed to locate doctor metadata." });
 
+        const feedbackDocId = row.feedback_doc_id;
+        if (!feedbackDocId) return res.status(500).json({ error: 'Feedback document ID not mapped for this doctor.' });
+
         try {
-            await medicalController.appendFeedback(row.feedback_doc_id, feedbackText, req.user.accessToken);
-            res.json({ message: "Feeback successfully appended to Drive." });
-        } catch (err) {
-            res.status(500).json({ error: err.message });
+            // Build header with user display name and formatted timestamp
+            const userName = (req.user && (req.user.displayName || (req.user.name && req.user.name.givenName))) || 'Usuário';
+            const now = new Date();
+            const HH = String(now.getHours()).padStart(2, '0');
+            const MM = String(now.getMinutes()).padStart(2, '0');
+            const DD = String(now.getDate()).padStart(2, '0');
+            const MMm = String(now.getMonth() + 1).padStart(2, '0');
+            const YYYY = now.getFullYear();
+            const header = `\n[${userName}] deu feedback as ${HH}:${MM} ${DD}/${MMm}/${YYYY}: ${feedbackText}\n---\n`;
+
+            // Delegate to controller which handles Drive read+update
+            await medicalController.appendFeedback(feedbackDocId, header, req.user.accessToken);
+            res.status(200).json({ message: 'Feedback synchronized with Drive.' });
+        } catch (err2) {
+            console.error('Error syncing feedback:', err2.message);
+            res.status(500).json({ error: 'Failed to synchronize feedback: ' + err2.message });
         }
     });
 });

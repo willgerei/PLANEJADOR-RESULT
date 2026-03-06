@@ -4,6 +4,7 @@ const { GoogleAIFileManager } = require('@google/generative-ai/server');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { Readable } = require('stream');
 
 /**
  * ResultPubli Medical Controller (Tier 2 Orchestrator)
@@ -275,34 +276,47 @@ REGRAS:
     /**
      * Appends new chronologic learning/feedback directly to the top of the Google Docs file.
      */
-    async appendFeedback(feedbackDocId, newFeedbackText, accessToken) {
+    // Expects 'headerText' already formatted (includes timestamp and user info)
+    async appendFeedback(feedbackDocId, headerText, accessToken) {
         if (!feedbackDocId) throw new Error("Missing Feedback Document ID.");
 
         try {
-            const docsClient = this.getAuthorizedDocs(accessToken);
-            const dateStr = new Date().toISOString().split('T')[0];
-            const formattedFeedback = `\n[${dateStr}] - ${newFeedbackText}\n`;
+            const drive = this.getAuthorizedDrive(accessToken);
 
-            // Insert text at index 1 (right after the very beginning of the document body)
-            await docsClient.documents.batchUpdate({
-                documentId: feedbackDocId,
-                requestBody: {
-                    requests: [
-                        {
-                            insertText: {
-                                location: { index: 1 },
-                                text: formattedFeedback
-                            }
-                        }
-                    ]
-                }
+            // 1) Read existing file content (feedback.md is stored as plain text)
+            let existing = '';
+            try {
+                const res = await drive.files.get({
+                    fileId: feedbackDocId,
+                    alt: 'media'
+                }, { responseType: 'text' });
+                existing = res.data || '';
+            } catch (readErr) {
+                console.warn(`Could not read existing feedback file ${feedbackDocId}:`, readErr.message);
+                existing = '';
+            }
+
+            // 2) Prepend headerText at the top (chronological reverse). Ensure spacing.
+            const combined = headerText + (existing ? '\n' + existing : '');
+
+            // 3) Upload updated content replacing the existing file
+            const media = {
+                mimeType: 'text/markdown',
+                body: Readable.from(Buffer.from(combined, 'utf-8'))
+            };
+
+            await drive.files.update({
+                fileId: feedbackDocId,
+                media,
+                requestBody: { mimeType: 'text/markdown' }
             });
-            console.log("Feedback synchronized with Google Drive.");
+
+            console.log('Feedback file updated on Drive:', feedbackDocId);
             return true;
 
         } catch (error) {
-            console.error("Error patching document in Google Drive:", error.message);
-            throw new Error("Failed to append feedback to Google Doc.");
+            console.error('Error updating feedback on Google Drive:', error.message);
+            throw new Error('Failed to append feedback to Drive file: ' + error.message);
         }
     }
 }
