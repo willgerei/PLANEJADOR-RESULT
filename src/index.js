@@ -10,6 +10,7 @@ const multer = require('multer');
 const { Readable } = require('stream');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const { Document, Packer, Paragraph, TextRun } = require('docx');
 const medicalController = require('./MedicalController');
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -30,6 +31,15 @@ const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE, (err) => {
         console.log('Connected to SQLite metadata indexer.');
     }
 });
+
+function dbGet(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.get(sql, params, (err, row) => {
+            if (err) return reject(err);
+            resolve(row);
+        });
+    });
+}
 
 // Setup View Engine
 app.set('views', path.join(__dirname, '../views'));
@@ -167,35 +177,107 @@ app.post('/api/orchestrate', ensureAuthenticated, async (req, res) => {
     });
 });
 
+app.post('/api/download-docx', ensureAuthenticated, async (req, res) => {
+    const { doctorId, copyText } = req.body;
+    if (!copyText || typeof copyText !== 'string') {
+        return res.status(400).json({ error: 'copyText is required.' });
+    }
+
+    try {
+        const now = new Date();
+        const YYYY = now.getFullYear();
+        const MM = String(now.getMonth() + 1).padStart(2, '0');
+        const DD = String(now.getDate()).padStart(2, '0');
+        const HH = String(now.getHours()).padStart(2, '0');
+        const MI = String(now.getMinutes()).padStart(2, '0');
+
+        let doctorName = 'copy';
+        if (doctorId) {
+            const doctorRow = await dbGet(`SELECT name FROM doctors WHERE id = ?`, [doctorId]);
+            if (doctorRow && doctorRow.name) doctorName = doctorRow.name;
+        }
+
+        const safeDoctorName = doctorName
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-zA-Z0-9]+/g, '-')
+            .replace(/(^-|-$)/g, '')
+            .toLowerCase() || 'copy';
+
+        const filename = `${safeDoctorName}-${YYYY}${MM}${DD}-${HH}${MI}.docx`;
+        const normalizedText = copyText.replace(/\r\n/g, '\n');
+        const lines = normalizedText.split('\n');
+        const paragraphs = lines.length
+            ? lines.map((line) => new Paragraph({ children: [new TextRun(line)] }))
+            : [new Paragraph('')];
+
+        const doc = new Document({
+            sections: [{ children: paragraphs }]
+        });
+        const fileBuffer = await Packer.toBuffer(doc);
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        return res.status(200).send(fileBuffer);
+    } catch (err) {
+        console.error('[Download] Failed to build .docx:', err.message);
+        return res.status(500).json({ error: 'Falha ao gerar o arquivo .docx.' });
+    }
+});
+
 app.post('/api/feedback', ensureAuthenticated, async (req, res) => {
     const { doctorId, feedbackText } = req.body;
-    if (!doctorId || !feedbackText) return res.status(400).json({ error: 'doctorId and feedbackText are required.' });
+    if (!doctorId || !feedbackText) {
+        return res.status(400).json({ error: 'doctorId and feedbackText are required.' });
+    }
 
-    db.get(`SELECT feedback_doc_id FROM doctors WHERE id = ?`, [doctorId], async (err, row) => {
-        if (err || !row) return res.status(500).json({ error: "Failed to locate doctor metadata." });
+    try {
+        // a) Captura usuário logado via OAuth e formata cabeçalho de log
+        const userName = (req.user && (req.user.displayName || (req.user.name && req.user.name.givenName))) || 'Usuário';
+        const now = new Date();
+        const HH = String(now.getHours()).padStart(2, '0');
+        const MM = String(now.getMinutes()).padStart(2, '0');
+        const DD = String(now.getDate()).padStart(2, '0');
+        const MMm = String(now.getMonth() + 1).padStart(2, '0');
+        const YYYY = now.getFullYear();
+        const header = `\n[${userName}] deu feedback as ${HH}:${MM} ${DD}/${MMm}/${YYYY}: ${feedbackText}\n---`;
 
+        // b) Busca o feedback_doc_id exclusivo no SQLite
+        const row = await dbGet(`SELECT feedback_doc_id FROM doctors WHERE id = ?`, [doctorId]);
+        if (!row) return res.status(500).json({ error: "Failed to locate doctor metadata." });
         const feedbackDocId = row.feedback_doc_id;
         if (!feedbackDocId) return res.status(500).json({ error: 'Feedback document ID not mapped for this doctor.' });
 
-        try {
-            // Build header with user display name and formatted timestamp
-            const userName = (req.user && (req.user.displayName || (req.user.name && req.user.name.givenName))) || 'Usuário';
-            const now = new Date();
-            const HH = String(now.getHours()).padStart(2, '0');
-            const MM = String(now.getMinutes()).padStart(2, '0');
-            const DD = String(now.getDate()).padStart(2, '0');
-            const MMm = String(now.getMonth() + 1).padStart(2, '0');
-            const YYYY = now.getFullYear();
-            const header = `\n[${userName}] deu feedback as ${HH}:${MM} ${DD}/${MMm}/${YYYY}: ${feedbackText}\n---\n`;
+        // c) Lê conteúdo atual do feedback.md no Drive (GET / alt=media)
+        const auth = new google.auth.OAuth2();
+        auth.setCredentials({ access_token: req.user.accessToken });
+        const drive = google.drive({ version: 'v3', auth });
 
-            // Delegate to controller which handles Drive read+update
-            await medicalController.appendFeedback(feedbackDocId, header, req.user.accessToken);
-            res.status(200).json({ message: 'Feedback synchronized with Drive.' });
-        } catch (err2) {
-            console.error('Error syncing feedback:', err2.message);
-            res.status(500).json({ error: 'Failed to synchronize feedback: ' + err2.message });
-        }
-    });
+        const getRes = await drive.files.get(
+            { fileId: feedbackDocId, alt: 'media' },
+            { responseType: 'text' }
+        );
+        const existingContent = typeof getRes.data === 'string' ? getRes.data : '';
+
+        // d) Concatena o log no topo (ordem cronológica reversa)
+        const updatedContent = `${header}\n${existingContent}`;
+
+        // e) Atualiza o arquivo com PATCH na Drive API v3
+        await drive.files.update({
+            fileId: feedbackDocId,
+            media: {
+                mimeType: 'text/markdown',
+                body: Readable.from(Buffer.from(updatedContent, 'utf-8'))
+            },
+            requestBody: { mimeType: 'text/markdown' }
+        });
+
+        // f) Retorna sucesso
+        return res.status(200).json({ message: 'Feedback synchronized with Drive.' });
+    } catch (err2) {
+        console.error('Error syncing feedback:', err2.message);
+        return res.status(500).json({ error: 'Failed to synchronize feedback: ' + err2.message });
+    }
 });
 
 // ── Onboarding Route (Tier 3 Execution) ─────────────────────────────────────

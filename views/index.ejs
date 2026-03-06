@@ -187,9 +187,11 @@
                         <div style="background:var(--bg-hover); padding:24px; border-radius:18px; line-height:1.7; white-space:pre-wrap; color:var(--text-main);"
                             id="generated-content"></div>
                         <div style="display:flex; gap:12px; margin-top:20px;">
-                            <button class="btn-pill btn-pill-dark" onclick="approveCopy()">Aprovar e Salvar</button>
-                            <button class="btn-pill" style="border:1px solid var(--border-soft)"
-                                onclick="resetPromptArea()">Refinar</button>
+                            <button id="btn-download" class="btn-pill btn-pill-dark"
+                                onclick="downloadGeneratedDocx()">Download .docx</button>
+                            <button id="btn-review" class="btn-pill" style="border:1px solid var(--border-soft)">
+                                Revisar
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -255,6 +257,7 @@
     <script>
         let currentDoctorId = null;
         let lastGeneratedDoctorId = null;
+        let lastGeneratedCopy = '';
 
         document.addEventListener('DOMContentLoaded', () => {
             setGreeting();
@@ -347,12 +350,14 @@
             document.getElementById('loader').style.display = 'none';
             if (data.copy) {
                 lastGeneratedDoctorId = docId;
+                lastGeneratedCopy = data.copy;
                 document.getElementById('generated-content').innerText = data.copy;
                 document.getElementById('step-result').classList.remove('hidden');
                 // hide feedback UI if previously opened
                 const fp = document.getElementById('feedback-panel');
                 if (fp) fp.classList.add('hidden');
             } else {
+                lastGeneratedCopy = '';
                 alert('Erro na geração.');
                 document.getElementById('btn-generate').style.display = 'block';
             }
@@ -362,6 +367,56 @@
             document.getElementById('step-result').classList.add('hidden');
             document.getElementById('btn-generate').style.display = 'block';
             document.getElementById('prompt-input').value = '';
+            lastGeneratedCopy = '';
+        }
+
+        function extractFilenameFromDisposition(disposition) {
+            if (!disposition) return null;
+            const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+            if (utf8Match && utf8Match[1]) return decodeURIComponent(utf8Match[1]);
+            const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+            return plainMatch ? plainMatch[1] : null;
+        }
+
+        async function downloadGeneratedDocx() {
+            const copyText = (lastGeneratedCopy || document.getElementById('generated-content').innerText || '').trim();
+            if (!copyText) return alert('Nenhum copy gerado para download.');
+
+            const doctorSelect = document.getElementById('doctor-select');
+            const doctorId = lastGeneratedDoctorId || (doctorSelect && doctorSelect.value ? doctorSelect.value : null);
+            const btn = document.getElementById('btn-download');
+            if (btn) btn.disabled = true;
+
+            try {
+                const resp = await fetch('/api/download-docx', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ doctorId, copyText })
+                });
+
+                if (!resp.ok) {
+                    const errorBody = await resp.json().catch(() => ({}));
+                    throw new Error(errorBody.error || 'Falha ao gerar arquivo .docx');
+                }
+
+                const blob = await resp.blob();
+                const disposition = resp.headers.get('content-disposition');
+                const filename = extractFilenameFromDisposition(disposition) || 'copy.docx';
+
+                const fileUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = fileUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(fileUrl);
+            } catch (err) {
+                console.error(err);
+                alert(err.message || 'Erro ao baixar arquivo .docx');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
         }
 
         // File list visual logic
