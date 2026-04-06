@@ -12,12 +12,14 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const { Document, Packer, Paragraph, TextRun } = require('docx');
 const medicalController = require('./MedicalController');
+const { translateBatch } = require('./services/translationExecutionService');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Trends Cache (30 min)
 let trendsCache = { data: null, timestamp: 0 };
-const CACHE_TTL = 0; // Disabled cache to ensure dynamic updates per session as requested
+const CACHE_TTL = 30 * 60 * 1000;
+const MAX_TRENDS = 12;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -138,7 +140,15 @@ app.get('/logout', (req, res, next) => {
 
 // Serve the Main UI (Protected)
 app.get('/', ensureAuthenticated, (req, res) => {
-    res.render('index', { user: req.user });
+    const driveParentId = String(process.env.GOOGLE_DRIVE_PARENT_ID || '').trim();
+    const driveDatabaseUrl = driveParentId
+        ? `https://drive.google.com/drive/folders/${driveParentId}`
+        : '';
+
+    res.render('index', {
+        user: req.user,
+        driveDatabaseUrl
+    });
 });
 
 // API Routes (Tier 3 Execution)
@@ -158,7 +168,7 @@ app.get('/api/doctors', ensureAuthenticated, (req, res) => {
 
 // Tier 2 Orchestration Route
 app.post('/api/orchestrate', ensureAuthenticated, async (req, res) => {
-    const { doctorId, prompt } = req.body;
+    const { doctorId, prompt, trendUrl, trendTitle } = req.body;
 
     if (!doctorId || !prompt) {
         return res.status(400).json({ error: "Missing doctor ID or prompt." });
@@ -172,7 +182,15 @@ app.post('/api/orchestrate', ensureAuthenticated, async (req, res) => {
         try {
             // Tier 2 execution sequence - Passing User Access Token for Drive authorization
             const contextStr = await medicalController.fetchContext(row.instructions_doc_id, row.feedback_doc_id, req.user.accessToken, row.drive_folder_id);
-            const generatedCopy = await medicalController.generateMedicalCopy(prompt, contextStr);
+            let trendContext = '';
+            if (trendUrl) {
+                try {
+                    trendContext = await medicalController.fetchTrendArticleContext(trendUrl, trendTitle);
+                } catch (trendError) {
+                    console.warn('[Trends] Falha ao anexar contexto da materia:', trendError.message);
+                }
+            }
+            const generatedCopy = await medicalController.generateMedicalCopy(prompt, contextStr, trendContext);
 
             res.json({
                 message: "Success",
@@ -428,56 +446,218 @@ app.post('/api/onboard-doctor', ensureAuthenticated, upload.array('files'), asyn
 // ── Trends Scraper Route (Tier 2 AI Orchestration) ─────────────────────────
 app.get('/api/trends', ensureAuthenticated, async (req, res) => {
     const now = Date.now();
-    if (trendsCache.data && (now - trendsCache.timestamp < CACHE_TTL)) {
+    const forceRefresh = ['1', 'true', 'yes'].includes(String(req.query.refresh || '').toLowerCase());
+
+    if (!forceRefresh && trendsCache.data && (now - trendsCache.timestamp < CACHE_TTL)) {
         console.log('[Trends] Servindo do cache');
         return res.json(trendsCache.data);
     }
 
     try {
-        console.log('[Trends] Buscando novos temas...');
-        const urls = [
-            'https://www.byrdie.com/wellness-4628395',
-            'https://www.byrdie.com/hair-4628407',
-            'https://www.theskimm.com/health',
-            'https://labmuffin.com',
-            'https://www.allure.com/wellness/body-image',
-            'https://www.allure.com/wellness/mental-health',
-            'https://www.self.com/health',
-            'https://www.self.com/beauty',
-            'https://www.mindbodygreen.com/health',
-            'https://www.mindbodygreen.com/beauty'
-
+        console.log(forceRefresh ? '[Trends] Refresh forçado. Recoletando temas...' : '[Trends] Buscando novos temas...');
+        const sources = [
+            {
+                url: 'https://www.byrdie.com/wellness-4628395',
+                category: 'Bem-estar',
+                selectors: [
+                    { container: '.card', title: '.card__title-text' },
+                    { container: 'a[data-doc-id]', title: '.card__title-text' },
+                    { container: 'a[href*="/"]', title: 'h2, h3' }
+                ]
+            },
+            {
+                url: 'https://www.byrdie.com/hair-4628407',
+                category: 'Cabelo',
+                selectors: [
+                    { container: '.card', title: '.card__title-text' },
+                    { container: 'a[data-doc-id]', title: '.card__title-text' },
+                    { container: 'a[href*="/"]', title: 'h2, h3' }
+                ]
+            },
+            {
+                url: 'https://www.theskimm.com/health',
+                category: 'Saúde',
+                selectors: [
+                    { container: 'a.group', title: 'h3' },
+                    { container: 'a[href*="/news"]', title: 'h2, h3, p' },
+                    { container: 'article a', title: 'h2, h3' }
+                ]
+            },
+            {
+                url: 'https://labmuffin.com',
+                category: 'Beleza',
+                selectors: [
+                    { container: 'article h2.entry-title a', title: null, directAnchor: true },
+                    { container: 'article h3.entry-title a', title: null, directAnchor: true },
+                    { container: 'article a', title: 'h2, h3, .entry-title' }
+                ]
+            },
+            {
+                url: 'https://www.allure.com/wellness/body-image',
+                category: 'Bem-estar',
+                selectors: [
+                    { container: '.SummaryItemHedLink', title: '.SummaryItemHed' },
+                    { container: 'a[href*="/story/"]', title: 'h2, h3, span' },
+                    { container: 'article a', title: 'h2, h3' }
+                ]
+            },
+            {
+                url: 'https://www.allure.com/wellness/mental-health',
+                category: 'Saúde mental',
+                selectors: [
+                    { container: '.SummaryItemHedLink', title: '.SummaryItemHed' },
+                    { container: 'a[href*="/story/"]', title: 'h2, h3, span' },
+                    { container: 'article a', title: 'h2, h3' }
+                ]
+            },
+            {
+                url: 'https://www.self.com/health',
+                category: 'Saúde',
+                selectors: [
+                    { container: '.SummaryItemHedLink', title: '.SummaryItemHed' },
+                    { container: 'a[href*="/story/"]', title: 'h2, h3, span' },
+                    { container: 'article a', title: 'h2, h3' }
+                ]
+            },
+            {
+                url: 'https://www.self.com/beauty',
+                category: 'Beleza',
+                selectors: [
+                    { container: '.SummaryItemHedLink', title: '.SummaryItemHed' },
+                    { container: 'a[href*="/story/"]', title: 'h2, h3, span' },
+                    { container: 'article a', title: 'h2, h3' }
+                ]
+            },
+            {
+                url: 'https://www.mindbodygreen.com/health',
+                category: 'Saúde',
+                selectors: [
+                    { container: 'a[href*="/articles/"]', title: 'h2, h3, p' },
+                    { container: 'article a', title: 'h2, h3' },
+                    { container: '.card a', title: 'h2, h3' }
+                ]
+            },
+            {
+                url: 'https://www.mindbodygreen.com/beauty',
+                category: 'Beleza',
+                selectors: [
+                    { container: 'a[href*="/articles/"]', title: 'h2, h3, p' },
+                    { container: 'article a', title: 'h2, h3' },
+                    { container: '.card a', title: 'h2, h3' }
+                ]
+            }
         ];
 
         let trends = [];
 
-        for (const url of urls) {
-            const { data } = await axios.get(url);
-            const $ = cheerio.load(data);
-            // Normalize category names to Portuguese for consistent UI
-            const category = url.includes('wellness') ? 'Bem-estar' : url.includes('hair') ? 'Cabelo' : 'Saúde';
+        const addTrend = (bucket, source, title, href) => {
+            const cleanTitle = String(title || '').replace(/\s+/g, ' ').trim();
+            const cleanHref = String(href || '').trim();
+            if (!cleanTitle || cleanTitle.length < 18 || !cleanHref) return;
+            try {
+                const urlObj = new URL(cleanHref, source.url);
+                if (!/^https?:$/.test(urlObj.protocol)) return;
+                bucket.push({ title: cleanTitle, url: urlObj.href, category: source.category });
+            } catch {
+                // Ignore malformed URLs
+            }
+        };
 
-            // Scraper logic for both architectures
-            const selector = url.includes('theskimm') ? 'a.group' : '.card';
-            const titleSelector = url.includes('theskimm') ? 'h3' : '.card__title-text';
+        const extractFromSelectors = ($, source) => {
+            const extracted = [];
+            for (const rule of source.selectors || []) {
+                $(rule.container).slice(0, 24).each((i, el) => {
+                    if (rule.directAnchor) {
+                        addTrend(extracted, source, $(el).text(), $(el).attr('href'));
+                        return;
+                    }
+                    const anchor = $(el).is('a') ? $(el) : $(el).find('a').first();
+                    const href = anchor.attr('href') || $(el).attr('href');
+                    const title = rule.title
+                        ? ($(el).find(rule.title).first().text().trim() || anchor.find(rule.title).first().text().trim() || anchor.text().trim())
+                        : anchor.text().trim();
+                    addTrend(extracted, source, title, href);
+                });
+                if (extracted.length >= 10) break;
+            }
+            return extracted;
+        };
 
-            $(selector).slice(0, 5).each((i, el) => {
-                const title = $(el).find(titleSelector).text().trim();
-                const link = url.includes('theskimm') ? 'https://www.theskimm.com' + $(el).attr('href') : $(el).attr('href');
-                if (title && link) {
-                    trends.push({ title, url: link, category });
+        const extractFromJsonLd = ($, source) => {
+            const extracted = [];
+            $('script[type="application/ld+json"]').each((i, el) => {
+                const raw = $(el).contents().text();
+                if (!raw) return;
+                try {
+                    const parsed = JSON.parse(raw);
+                    const nodes = Array.isArray(parsed) ? parsed : [parsed];
+                    nodes.forEach((node) => {
+                        if (Array.isArray(node?.itemListElement)) {
+                            node.itemListElement.forEach((item) => {
+                                const candidate = item?.item || item;
+                                addTrend(extracted, source, candidate?.headline || candidate?.name, candidate?.url);
+                            });
+                        }
+                        addTrend(extracted, source, node?.headline || node?.name, node?.url);
+                    });
+                } catch {
+                    // Ignore invalid JSON-LD blocks
                 }
             });
+            return extracted;
+        };
+
+        for (const source of sources) {
+            try {
+                const { data } = await axios.get(source.url, { timeout: 15000 });
+                const $ = cheerio.load(data);
+                const selectorItems = extractFromSelectors($, source);
+                const jsonLdItems = extractFromJsonLd($, source);
+                const fromSource = [...selectorItems, ...jsonLdItems];
+                const sourceUnique = Array.from(
+                    fromSource.reduce((map, item) => {
+                        const key = `${item.title.toLowerCase()}::${item.url}`;
+                        if (!map.has(key)) map.set(key, item);
+                        return map;
+                    }, new Map()).values()
+                ).slice(0, 8);
+
+                trends.push(...sourceUnique);
+                console.log(`[Trends] Fonte ${source.url} -> ${sourceUnique.length} itens`);
+            } catch (sourceErr) {
+                console.warn(`[Trends] Falha na fonte ${source.url}: ${sourceErr.message}`);
+            }
         }
 
-        // Shuffle
-        trends = trends.sort(() => 0.5 - Math.random()).slice(0, 4);
+        if (!trends.length) throw new Error('Nenhuma tendência encontrada nas fontes configuradas.');
 
-        // Translate and refine with AI
-        const translatedTrends = await Promise.all(trends.map(async (item) => {
-            const translatedTitle = await medicalController.translateTrend(item.title);
-            return { ...item, title: translatedTitle };
+        const uniqueTrends = Array.from(
+            trends.reduce((map, item) => {
+                const key = `${item.title.toLowerCase()}::${item.url}`;
+                if (!map.has(key)) map.set(key, item);
+                return map;
+            }, new Map()).values()
+        );
+
+        const selectedTrends = uniqueTrends.sort(() => 0.5 - Math.random()).slice(0, MAX_TRENDS);
+
+        // Tier 3 deterministic translation (no LLM): batch translate titles with Google Cloud Translation API.
+        const originalTitles = selectedTrends.map((item) => item.title);
+        const { translatedTexts, stats } = await translateBatch(originalTitles, { target: 'pt-BR', source: 'en' });
+
+        const translatedTrends = selectedTrends.map((item, index) => ({
+            ...item,
+            title: translatedTexts[index] || item.title
         }));
+
+        if (stats.reason === 'missing_api_key') {
+            console.warn('[Trends][Translation] GOOGLE_TRANSLATE_API_KEY ausente; mantendo títulos originais.');
+        } else if (stats.fallback === stats.requested && stats.requested > 0) {
+            console.warn(`[Trends][Translation] Falha total; fallback aplicado em ${stats.fallback}/${stats.requested}. ${stats.errorMessage || ''}`.trim());
+        } else if (stats.fallback > 0) {
+            console.warn(`[Trends][Translation] Fallback parcial em ${stats.fallback}/${stats.requested}.`);
+        }
+        console.log(`[Trends][Translation] requested=${stats.requested} translated=${stats.translated} fallback=${stats.fallback}`);
 
         trendsCache = { data: translatedTrends, timestamp: now };
         res.json(translatedTrends);

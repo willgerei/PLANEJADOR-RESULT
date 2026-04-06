@@ -6,6 +6,7 @@ Um sistema inteligente de gestão médica desenvolvido em **Node.js** e **Expres
 
 - **Integração com Google Drive:** Upload e organização automatizada de documentos.
 - **Inteligência Artificial (Gemini):** Processamento e análise de conteúdo médico.
+- **Tradução determinística de trends (Camada 3):** Integração com Google Cloud Translation API sem uso de LLM.
 - **Gestão de Sessões:** Autenticação segura com Google OAuth2.
 - **Banco de Dados Local:** Armazenamento persistente com SQLite3.
 - **Interface Moderna:** Desenvolvida com EJS e CSS personalizado.
@@ -15,6 +16,7 @@ Um sistema inteligente de gestão médica desenvolvido em **Node.js** e **Expres
 - [Node.js](https://nodejs.org/)
 - [Express](https://expressjs.com/)
 - [Google Generative AI (Gemini)](https://ai.google.dev/)
+- [Google Cloud Translation API](https://cloud.google.com/translate/docs)
 - [Google APIs (Drive & Auth)](https://developers.google.com/drive)
 - [SQLite3](https://www.sqlite.org/)
 - [EJS](https://ejs.co/)
@@ -46,6 +48,8 @@ Um sistema inteligente de gestão médica desenvolvido em **Node.js** e **Expres
    GOOGLE_CLIENT_ID=seu_client_id_do_google
    GOOGLE_CLIENT_SECRET=seu_client_secret_do_google
    GEMINI_API_KEY=sua_gemini_api_key
+   GOOGLE_TRANSLATE_API_KEY=sua_google_translate_api_key
+   GOOGLE_TRANSLATE_TIMEOUT_MS=8000
    GOOGLE_DRIVE_PARENT_ID=id_da_pasta_no_google_drive
    ```
 

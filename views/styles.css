@@ -487,16 +487,100 @@ body {
     background: var(--bg-hover);
 }
 
-/* ── Staggered Cards ── */
-.trends-header {
+.admin-drive-link {
     width: 100%;
+    margin-top: 12px;
+    text-decoration: none;
+}
+
+.admin-drive-link[disabled] {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* ── Staggered Cards ── */
+.trends-toolbar {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.trends-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.trends-header {
+    width: auto;
     font-size: 0.75rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
     color: var(--text-muted);
-    margin-bottom: 20px;
+    margin-bottom: 0;
     text-align: left;
+    white-space: nowrap;
+}
+
+.trends-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.trends-search input {
+    width: 240px;
+    max-width: 100%;
+    padding: 9px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border-soft);
+    background: var(--bg-hover);
+    font-family: inherit;
+    font-size: 0.82rem;
+    color: var(--text-main);
+    outline: none;
+}
+
+.trends-search input:focus {
+    background: white;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1);
+}
+
+.btn-trend-toolbar {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+}
+
+.trend-search-status {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    min-width: 56px;
+    text-align: right;
+}
+
+.btn-refresh-trends {
+    border: 1px solid var(--border-soft);
+    background: var(--bg-card);
+    color: var(--text-main);
+}
+
+.btn-refresh-trends:hover {
+    background: var(--bg-hover);
+}
+
+.btn-refresh-trends:disabled {
+    opacity: 0.65;
+    cursor: progress;
 }
 
 .trends-grid {
@@ -612,6 +696,16 @@ body {
     border-color: var(--border-soft);
     box-shadow: var(--shadow-float);
     transform: translateY(-8px);
+}
+
+.trend-card.trend-card-match {
+    border-color: rgba(168, 85, 247, 0.35);
+}
+
+.trend-card.trend-card-focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.14), var(--shadow-float);
+    transform: translateY(-4px);
 }
 
 .trend-card .actions {
@@ -735,6 +829,55 @@ textarea:focus {
     box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.1);
 }
 
+.selected-trend-context {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 12px 14px;
+    border: 1px solid rgba(168, 85, 247, 0.16);
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(255, 255, 255, 0.95));
+    flex-wrap: wrap;
+}
+
+.selected-trend-context.hidden {
+    display: none;
+}
+
+.selected-trend-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--primary-dark);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.selected-trend-context a {
+    color: var(--primary-dark);
+    font-weight: 600;
+    text-decoration: none;
+    word-break: break-word;
+}
+
+.selected-trend-context a:hover {
+    text-decoration: underline;
+}
+
+.selected-trend-clear {
+    margin-left: auto;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.selected-trend-clear:hover {
+    color: var(--primary-dark);
+}
+
 /* ── Animations Reference ── */
 .stagger-1 {
     transition-delay: 0.1s;
@@ -754,12 +897,52 @@ textarea:focus {
 
 /* ── Responsive ── */
 @media (max-width: 1024px) {
+    .trends-toolbar {
+        align-items: flex-start;
+    }
+
+    .trends-toolbar-left {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .trends-search input {
+        width: min(320px, 100%);
+    }
+
     .trends-grid {
         grid-template-columns: repeat(2, 1fr);
     }
 }
 
 @media (max-width: 600px) {
+    .trends-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    .trends-toolbar-left {
+        width: 100%;
+    }
+
+    .trends-header {
+        white-space: normal;
+    }
+
+    .trends-search {
+        width: 100%;
+    }
+
+    .trends-search input {
+        width: 100%;
+        flex: 1;
+    }
+
+    .btn-refresh-trends {
+        width: 100%;
+    }
+
     .trends-grid {
         grid-template-columns: 1fr;
     }

@@ -76,11 +76,6 @@
                     Gemini 3.1 Flash Lite
                 </div>
                 <div class="topbar-actions">
-                    <button class="btn-icon" title="Pesquisar"><svg width="16" height="16" viewBox="0 0 24 24"
-                            fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="11" cy="11" r="8" />
-                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                        </svg></button>
                     <button class="btn-icon" title="Notificações"><svg width="16" height="16" viewBox="0 0 24 24"
                             fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -113,7 +108,7 @@
                 </div>
 
                 <div class="dashboard-ctas">
-                    <button class="btn-hero btn-hero-primary" onclick="switchTab(' orchestration-tab',
+                    <button class="btn-hero btn-hero-primary" onclick="switchTab('orchestration-tab',
                             document.querySelector('a[title=Planejamento]'))">
                             Criar Planejamento
                             </button>
@@ -123,7 +118,22 @@
                             </button>
                 </div>
 
-                <div class="trends-header">COMECE COM UM TEMA EM ALTA</div>
+                <div class="trends-toolbar">
+                    <div class="trends-toolbar-left">
+                        <div class="trends-header">COMECE COM UM TEMA EM ALTA</div>
+                        <div class="trends-search">
+                            <input id="trend-search-input" type="text" placeholder="Pesquisar nas trends..." aria-label="Pesquisar nas trends">
+                            <button id="trend-search-btn" class="btn-icon btn-trend-toolbar" title="Pesquisar entre as trends">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="11" cy="11" r="8" />
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                                </svg>
+                            </button>
+                            <span id="trend-search-status" class="trend-search-status"></span>
+                        </div>
+                    </div>
+                    <button id="trend-refresh-btn" class="btn-pill btn-refresh-trends" type="button">Refresh</button>
+                </div>
                 <div class="trends-grid" id="trends-grid">
                     <!-- Cards will be injected here via JS -->
                     <div class="trend-card visible stagger-1">
@@ -217,6 +227,11 @@
                         <label class="input-label">Instruções para o Gemini</label>
                         <textarea id="prompt-input" rows="5"
                             placeholder="Ex: Crie um carrossel sobre biohacking focado em longevidade ativa..."></textarea>
+                        <div id="selected-trend-context" class="selected-trend-context hidden">
+                            <span class="selected-trend-label">Trend vinculada ao prompt</span>
+                            <a id="selected-trend-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+                            <button id="selected-trend-clear" class="selected-trend-clear" type="button">Remover trend</button>
+                        </div>
                     </div>
 
                     <button class="btn-hero btn-hero-primary" style="width:100%" id="btn-generate"
@@ -232,6 +247,9 @@
                         <div style="display:flex; gap:12px; margin-top:20px;">
                             <button id="btn-download" class="btn-pill btn-pill-dark"
                                 onclick="downloadGeneratedDocx()">Download .docx</button>
+                            <button id="btn-new-content" class="btn-pill" style="border:1px solid var(--border-soft)">
+                                Novo conteúdo
+                            </button>
                             <button id="btn-review" class="btn-pill" style="border:1px solid var(--border-soft)">
                                 Revisar
                             </button>
@@ -291,6 +309,15 @@
 
                     <button class="btn-hero btn-hero-primary" style="width:100%" id="ob-submit-btn"
                         onclick="submitOnboarding()">🚀 Criar Estrutura no Drive</button>
+                    <% if (driveDatabaseUrl) { %>
+                        <a class="btn-hero btn-hero-secondary admin-drive-link" href="<%= driveDatabaseUrl %>" target="_blank" rel="noopener noreferrer">
+                            Acessar banco de dados do Drive
+                        </a>
+                    <% } else { %>
+                        <button class="btn-hero btn-hero-secondary admin-drive-link" type="button" disabled title="Configure GOOGLE_DRIVE_PARENT_ID no .env para habilitar este atalho.">
+                            Acessar banco de dados do Drive
+                        </button>
+                    <% } %>
                 </div>
             </section>
 
@@ -301,9 +328,14 @@
         let currentDoctorId = null;
         let lastGeneratedDoctorId = null;
         let lastGeneratedCopy = '';
+        let selectedTrend = null;
+        const TRENDS_TOTAL = 12;
+        let currentTrends = [];
+        let trendSearchState = { query: '', matches: [], cursor: -1 };
 
         document.addEventListener('DOMContentLoaded', () => {
             setGreeting();
+            setupTrendControls();
             loadDoctors();
             loadTrends();
             setupProductFeedbackPanel();
@@ -331,35 +363,216 @@
             select.disabled = false;
         }
 
-        async function loadTrends() {
+        function normalizeSearchText(text) {
+            return String(text || '')
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .trim();
+        }
+
+        function resetTrendSearchState(clearInput = false) {
+            trendSearchState = { query: '', matches: [], cursor: -1 };
+            const statusEl = document.getElementById('trend-search-status');
+            if (statusEl) statusEl.innerText = '';
+            if (clearInput) {
+                const input = document.getElementById('trend-search-input');
+                if (input) input.value = '';
+            }
+            document.querySelectorAll('#trends-grid .trend-card').forEach((card) => {
+                card.classList.remove('trend-card-match', 'trend-card-focus');
+            });
+        }
+
+        function renderTrendPlaceholders(message) {
             const grid = document.getElementById('trends-grid');
-            try {
-                const res = await fetch('/api/trends');
-                const trends = await res.json();
-                grid.innerHTML = '';
-                trends.forEach((t, i) => {
-                    const card = document.createElement('div');
-                    card.className = `trend-card stagger-${i + 1}`;
-                    card.innerHTML = `
-                        <div>
-                            <div class="tags" style="margin-bottom:8px;">
-                                <span style="font-size:0.65rem; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:0.05em;">#${t.category}</span>
-                            </div>
-                            <div class="title">${t.title}</div>
-                        </div>
-                        <div class="actions">
-                            <button class="btn-trend btn-trend-primary" onclick="event.stopPropagation(); useTrendTheme('${t.title}')">
-                                Usar tema
-                            </button>
-                            <a href="${t.url}" target="_blank" class="btn-trend btn-trend-secondary" onclick="event.stopPropagation()">
-                                Saber mais
-                            </a>
-                        </div>
-                    `;
-                    grid.appendChild(card);
-                    setTimeout(() => card.classList.add('visible'), 50);
+            if (!grid) return;
+            grid.innerHTML = '';
+            for (let i = 0; i < TRENDS_TOTAL; i++) {
+                const card = document.createElement('div');
+                card.className = `trend-card visible stagger-${(i % TRENDS_TOTAL) + 1}`;
+                const title = document.createElement('div');
+                title.className = 'title';
+                title.innerText = message;
+                card.appendChild(title);
+                grid.appendChild(card);
+            }
+        }
+
+        function renderTrends(trends) {
+            const grid = document.getElementById('trends-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+
+            trends.slice(0, TRENDS_TOTAL).forEach((t, i) => {
+                const card = document.createElement('div');
+                card.className = `trend-card stagger-${(i % TRENDS_TOTAL) + 1}`;
+
+                const top = document.createElement('div');
+                const tags = document.createElement('div');
+                tags.className = 'tags';
+                tags.style.marginBottom = '8px';
+
+                const tag = document.createElement('span');
+                tag.style.fontSize = '0.65rem';
+                tag.style.fontWeight = '700';
+                tag.style.color = 'var(--primary)';
+                tag.style.textTransform = 'uppercase';
+                tag.style.letterSpacing = '0.05em';
+                tag.innerText = `#${t.category || 'Tema'}`;
+
+                const title = document.createElement('div');
+                title.className = 'title';
+                title.innerText = t.title || 'Tema indisponível no momento';
+
+                tags.appendChild(tag);
+                top.appendChild(tags);
+                top.appendChild(title);
+
+                const actions = document.createElement('div');
+                actions.className = 'actions';
+
+                const useBtn = document.createElement('button');
+                useBtn.className = 'btn-trend btn-trend-primary';
+                useBtn.type = 'button';
+                useBtn.innerText = 'Usar tema';
+                useBtn.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    useTrendTheme(t);
                 });
-            } catch (e) { console.error(e); }
+
+                const link = document.createElement('a');
+                link.className = 'btn-trend btn-trend-secondary';
+                link.href = t.url || '#';
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.innerText = 'Saber mais';
+                link.addEventListener('click', (event) => event.stopPropagation());
+
+                actions.appendChild(useBtn);
+                actions.appendChild(link);
+                card.appendChild(top);
+                card.appendChild(actions);
+                grid.appendChild(card);
+
+                setTimeout(() => card.classList.add('visible'), 50 + (i * 25));
+            });
+
+            const missing = Math.max(0, TRENDS_TOTAL - trends.length);
+            for (let i = 0; i < missing; i++) {
+                const card = document.createElement('div');
+                card.className = `trend-card visible stagger-${(trends.length + i) % TRENDS_TOTAL + 1}`;
+                const title = document.createElement('div');
+                title.className = 'title';
+                title.innerText = 'Trend indisponível no momento';
+                card.appendChild(title);
+                grid.appendChild(card);
+            }
+        }
+
+        function searchTrends() {
+            const input = document.getElementById('trend-search-input');
+            const statusEl = document.getElementById('trend-search-status');
+            if (!input || !statusEl) return;
+
+            const queryRaw = input.value.trim();
+            const normalizedQuery = normalizeSearchText(queryRaw);
+
+            document.querySelectorAll('#trends-grid .trend-card').forEach((card) => {
+                card.classList.remove('trend-card-match', 'trend-card-focus');
+            });
+
+            if (!normalizedQuery) {
+                resetTrendSearchState(false);
+                return;
+            }
+
+            if (normalizedQuery !== trendSearchState.query) {
+                const matches = currentTrends.reduce((acc, trend, index) => {
+                    const haystack = normalizeSearchText(`${trend.title || ''} ${trend.category || ''}`);
+                    if (haystack.includes(normalizedQuery)) acc.push(index);
+                    return acc;
+                }, []);
+                trendSearchState = { query: normalizedQuery, matches, cursor: -1 };
+            }
+
+            if (!trendSearchState.matches.length) {
+                statusEl.innerText = 'Sem resultados';
+                return;
+            }
+
+            const cards = Array.from(document.querySelectorAll('#trends-grid .trend-card'));
+            trendSearchState.matches.forEach((index) => {
+                if (cards[index]) cards[index].classList.add('trend-card-match');
+            });
+
+            trendSearchState.cursor = (trendSearchState.cursor + 1) % trendSearchState.matches.length;
+            const targetIndex = trendSearchState.matches[trendSearchState.cursor];
+            const targetCard = cards[targetIndex];
+            if (targetCard) {
+                targetCard.classList.add('trend-card-focus');
+                targetCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            }
+
+            statusEl.innerText = `${trendSearchState.cursor + 1}/${trendSearchState.matches.length}`;
+        }
+
+        function setupTrendControls() {
+            const searchInput = document.getElementById('trend-search-input');
+            const searchBtn = document.getElementById('trend-search-btn');
+            const refreshBtn = document.getElementById('trend-refresh-btn');
+
+            if (searchBtn) searchBtn.addEventListener('click', searchTrends);
+            if (searchInput) {
+                searchInput.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        searchTrends();
+                    }
+                });
+                searchInput.addEventListener('input', () => {
+                    if (!searchInput.value.trim()) {
+                        resetTrendSearchState(false);
+                    } else {
+                        trendSearchState.cursor = -1;
+                    }
+                });
+            }
+            if (refreshBtn) refreshBtn.addEventListener('click', () => loadTrends({ forceRefresh: true }));
+        }
+
+        async function loadTrends({ forceRefresh = false } = {}) {
+            const grid = document.getElementById('trends-grid');
+            const statusEl = document.getElementById('trend-search-status');
+            const refreshBtn = document.getElementById('trend-refresh-btn');
+            if (!grid) return;
+
+            resetTrendSearchState(false);
+            renderTrendPlaceholders(forceRefresh ? 'Atualizando tendências...' : 'Carregando tendências...');
+            if (refreshBtn) {
+                refreshBtn.disabled = true;
+                refreshBtn.innerText = 'Atualizando...';
+            }
+
+            try {
+                const endpoint = forceRefresh ? '/api/trends?refresh=1' : '/api/trends';
+                const res = await fetch(endpoint);
+                if (!res.ok) throw new Error('Falha ao buscar tendências');
+                const trends = await res.json();
+                currentTrends = Array.isArray(trends) ? trends.slice(0, TRENDS_TOTAL) : [];
+                renderTrends(currentTrends);
+                if (statusEl) statusEl.innerText = `${currentTrends.length} trends`;
+            } catch (e) {
+                console.error(e);
+                currentTrends = [];
+                renderTrendPlaceholders('Falha ao carregar tendências.');
+                if (statusEl) statusEl.innerText = 'Erro';
+            } finally {
+                if (refreshBtn) {
+                    refreshBtn.disabled = false;
+                    refreshBtn.innerText = 'Refresh';
+                }
+            }
         }
 
         function switchTab(id, el) {
@@ -371,8 +584,34 @@
             if (el) el.classList.add('active');
         }
 
-        function useTrendTheme(title) {
+        function updateSelectedTrendUI() {
+            const wrapper = document.getElementById('selected-trend-context');
+            const link = document.getElementById('selected-trend-link');
+            if (!wrapper || !link) return;
+
+            if (!selectedTrend || !selectedTrend.url) {
+                wrapper.classList.add('hidden');
+                link.href = '#';
+                link.innerText = '';
+                return;
+            }
+
+            link.href = selectedTrend.url;
+            link.innerText = selectedTrend.title || selectedTrend.url;
+            wrapper.classList.remove('hidden');
+        }
+
+        function clearSelectedTrend() {
+            selectedTrend = null;
+            updateSelectedTrendUI();
+        }
+
+        function useTrendTheme(trend) {
+            const title = trend && trend.title ? trend.title : '';
+            const url = trend && trend.url ? trend.url : '';
+            selectedTrend = title && url ? { title, url } : null;
             document.getElementById('prompt-input').value = `Quero um carrossel detalhado sobre: ${title}`;
+            updateSelectedTrendUI();
             switchTab('orchestration-tab', document.querySelector('a[title=Planejamento]'));
         }
 
@@ -388,7 +627,12 @@
             const res = await fetch('/api/orchestrate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ doctorId: docId, prompt })
+                body: JSON.stringify({
+                    doctorId: docId,
+                    prompt,
+                    trendUrl: selectedTrend?.url || '',
+                    trendTitle: selectedTrend?.title || ''
+                })
             });
             const data = await res.json();
             document.getElementById('loader').style.display = 'none';
@@ -411,8 +655,15 @@
             document.getElementById('step-result').classList.add('hidden');
             document.getElementById('btn-generate').style.display = 'block';
             document.getElementById('prompt-input').value = '';
+            document.getElementById('generated-content').innerText = '';
+            clearSelectedTrend();
+            lastGeneratedDoctorId = null;
             lastGeneratedCopy = '';
+            const promptInput = document.getElementById('prompt-input');
+            if (promptInput) promptInput.focus();
         }
+
+        document.getElementById('selected-trend-clear')?.addEventListener('click', clearSelectedTrend);
 
         function setupProductFeedbackPanel() {
             const openBtn = document.getElementById('open-product-feedback');
@@ -527,16 +778,100 @@
         });
 
         async function submitOnboarding() {
-            // Logic handled by existing /api/onboard-doctor route
+            const name = document.getElementById('ob-name').value.trim();
+            const specialty = document.getElementById('ob-specialty').value.trim();
+            const csResponsible = document.getElementById('ob-cs').value;
+            const briefing = document.getElementById('ob-briefing').value.trim();
+            const fileInput = document.getElementById('file-upload');
             const btn = document.getElementById('ob-submit-btn');
+
+            if (!name || !specialty) {
+                return alert('Preencha pelo menos nome e especialidade antes de criar a estrutura.');
+            }
+
             btn.innerText = 'Criando no Drive...';
             btn.disabled = true;
-            // ... (rest of the logic remains the same as previous version)
-            alert('Enviando dados...');
-            location.reload();
+
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('specialty', specialty);
+            formData.append('cs_responsible', csResponsible);
+            formData.append('briefing', briefing);
+
+            Array.from(fileInput.files || []).forEach((file) => {
+                formData.append('files', file);
+            });
+
+            try {
+                const resp = await fetch('/api/onboard-doctor', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    throw new Error(data.error || 'Falha ao criar a estrutura no Drive.');
+                }
+
+                alert('Estrutura criada com sucesso no Drive.');
+                document.getElementById('ob-name').value = '';
+                document.getElementById('ob-specialty').value = '';
+                document.getElementById('ob-briefing').value = '';
+                if (fileInput) fileInput.value = '';
+                document.getElementById('file-list').innerHTML = '';
+                await loadDoctors();
+            } catch (error) {
+                console.error(error);
+                alert(error.message || 'Erro ao criar a estrutura no Drive.');
+            } finally {
+                btn.innerText = '🚀 Criar Estrutura no Drive';
+                btn.disabled = false;
+            }
         }
 
         /* Feedback Modal (Dark Theme) */
+        (function insertNewContentModal() {
+            if (document.getElementById('new-content-modal-overlay')) return;
+            const html = `
+<style>
+  #new-content-modal-overlay { position: fixed; inset: 0; background: rgba(17,24,39,0.18); display: none; align-items: center; justify-content: center; z-index: 1190; }
+  #new-content-modal { width:100%; max-width:640px; background:var(--bg-card); border-radius:14px; padding:24px; box-shadow:var(--shadow-float); color:var(--text-main); border:1px solid var(--border-soft); }
+  #new-content-modal h3 { margin:0 0 8px 0; font-size:1.08rem; }
+  #new-content-modal p { margin:0; color:var(--text-secondary); font-size:0.95rem; line-height:1.6; }
+  .new-content-actions { display:flex; gap:10px; margin-top:18px; align-items:center; flex-wrap:wrap; }
+  .new-content-btn-secondary { background:var(--bg-card); border:1px solid var(--border-soft); color:var(--text-secondary); padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600; }
+  .new-content-btn-primary { background:var(--text-main); color:#fff; border:none; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600; }
+</style>
+<div id="new-content-modal-overlay" aria-hidden="true">
+  <div id="new-content-modal" role="dialog" aria-modal="true" aria-labelledby="new-content-modal-title">
+    <h3 id="new-content-modal-title">Comecar um novo planejamento</h3>
+    <p>Quer iniciar um novo planejamento agora? Se quiser, voce pode baixar o conteudo atual antes de limpar a tela. O medico e o atendimento selecionados vao continuar salvos.</p>
+    <div class="new-content-actions">
+      <button id="new-content-download" class="new-content-btn-secondary" type="button">Baixar conteudo atual</button>
+      <button id="new-content-confirm" class="new-content-btn-primary" type="button">Criar novo</button>
+      <button id="new-content-cancel" class="new-content-btn-secondary" type="button">Cancelar</button>
+    </div>
+  </div>
+</div>`;
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = html;
+            document.body.appendChild(wrapper);
+        })();
+
+        function openNewContentModal() {
+            const overlay = document.getElementById('new-content-modal-overlay');
+            if (!overlay) return;
+            overlay.style.display = 'flex';
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeNewContentModal() {
+            const overlay = document.getElementById('new-content-modal-overlay');
+            if (!overlay) return;
+            overlay.style.display = 'none';
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+
         // Modal HTML (hidden by default)
         (function insertFeedbackModal() {
             if (document.getElementById('feedback-modal-overlay')) return;
@@ -591,10 +926,35 @@
         });
 
         document.addEventListener('DOMContentLoaded', () => {
+            const newContentBtn = document.getElementById('btn-new-content');
+            const newContentOverlay = document.getElementById('new-content-modal-overlay');
+            const newContentCancel = document.getElementById('new-content-cancel');
+            const newContentDownload = document.getElementById('new-content-download');
+            const newContentConfirm = document.getElementById('new-content-confirm');
             const btnCancel = document.getElementById('feedback-modal-cancel');
             const btnSend = document.getElementById('feedback-modal-send');
             const overlay = document.getElementById('feedback-modal-overlay');
 
+            if (newContentBtn) newContentBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                openNewContentModal();
+            });
+            if (newContentCancel) newContentCancel.addEventListener('click', (e) => {
+                e.preventDefault();
+                closeNewContentModal();
+            });
+            if (newContentOverlay) newContentOverlay.addEventListener('click', (e) => {
+                if (e.target === newContentOverlay) closeNewContentModal();
+            });
+            if (newContentDownload) newContentDownload.addEventListener('click', async (e) => {
+                e.preventDefault();
+                await downloadGeneratedDocx();
+            });
+            if (newContentConfirm) newContentConfirm.addEventListener('click', (e) => {
+                e.preventDefault();
+                closeNewContentModal();
+                resetPromptArea();
+            });
             if (btnCancel) btnCancel.addEventListener('click', (e) => { e.preventDefault(); closeFeedbackModal(); });
             if (overlay) overlay.addEventListener('click', (e) => { if (e.target === overlay) closeFeedbackModal(); });
 

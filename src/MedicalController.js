@@ -1,6 +1,8 @@
 const { google } = require('googleapis');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { GoogleAIFileManager } = require('@google/generative-ai/server');
+const axios = require('axios');
+const cheerio = require('cheerio');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -34,6 +36,7 @@ Antes de escrever, analise os arquivos do cliente anexados na solicitação e ex
 * O tom de voz exigido (ex: conservador, direto, comercial, acolhedor).
 * Regras estritas e palavras proibidas.
 O texto final gerado DEVE refletir perfeitamente o tom de voz e as regras desse cliente específico.
+* Se houver uma matéria de trend anexada como contexto, use as informações dela como referência de pauta, mas adapte tudo ao contexto médico do cliente e nunca copie trechos literalmente.
 
 ---
 
@@ -127,26 +130,6 @@ Hashtags: #[HashtagDoCliente1] #[HashtagDoCliente2] #[HashtagDoTema]`;
     }
 
     /**
-     * Traduz e sumariza um tópico das trends para post de Instagram
-     */
-    async translateTrend(title) {
-        try {
-            const prompt = `Traduza o seguinte título de artigo para o português do Brasil. O resultado deve ser um título curto, atraente e profissional para Instagram.
-Título Original: "${title}"
-REGRAS:
-1. RESPONDA APENAS COM O TEXTO TRADUZIDO.
-2. Não use aspas, não explique e não mantenha termos em inglês (traduza tudo).
-3. Máximo de 10 palavras.`;
-            const result = await this.model.generateContent(prompt);
-            const text = result.response.text().trim().replace(/^"|"$/g, '');
-            return text || title;
-        } catch (err) {
-            console.error('[AI] Erro ao traduzir trend:', err.message);
-            return title;
-        }
-    }
-
-    /**
      * Extracts pure text content from a Google Docs document structure.
      */
     _extractTextFromDoc(docData) {
@@ -163,6 +146,46 @@ REGRAS:
             });
         }
         return text;
+    }
+
+    _normalizeWhitespace(text) {
+        return String(text || '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    _extractTrendArticleText($) {
+        const selectors = [
+            'article',
+            'main',
+            '[role="main"]',
+            '.article-body',
+            '.entry-content',
+            '.post-content',
+            '.post__content',
+            '.content'
+        ];
+
+        const collectParagraphs = (root) => {
+            const paragraphs = [];
+            root.find('p').each((_, el) => {
+                const text = this._normalizeWhitespace($(el).text());
+                if (text.length >= 60) paragraphs.push(text);
+            });
+            return paragraphs;
+        };
+
+        for (const selector of selectors) {
+            const root = $(selector).first();
+            if (!root.length) continue;
+            const paragraphs = collectParagraphs(root);
+            if (paragraphs.length >= 3) {
+                return paragraphs.slice(0, 18).join('\n');
+            }
+        }
+
+        const fallbackParagraphs = collectParagraphs($.root());
+        return fallbackParagraphs.slice(0, 18).join('\n');
     }
 
     /**
@@ -231,17 +254,72 @@ REGRAS:
         }
     }
 
+    async fetchTrendArticleContext(trendUrl, trendTitle = '') {
+        if (!trendUrl) return '';
+
+        let normalizedUrl = '';
+        try {
+            const parsed = new URL(String(trendUrl).trim());
+            if (!/^https?:$/.test(parsed.protocol)) {
+                throw new Error('Unsupported protocol.');
+            }
+            normalizedUrl = parsed.href;
+        } catch (error) {
+            throw new Error(`Invalid trend URL: ${error.message}`);
+        }
+
+        try {
+            const response = await axios.get(normalizedUrl, {
+                timeout: 12000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (compatible; ResultPubliTrendFetcher/1.0)'
+                }
+            });
+
+            const $ = cheerio.load(response.data);
+            $('script, style, noscript, iframe, svg').remove();
+
+            const pageTitle = this._normalizeWhitespace(
+                $('meta[property="og:title"]').attr('content')
+                || $('title').first().text()
+                || $('h1').first().text()
+                || trendTitle
+            );
+            const description = this._normalizeWhitespace(
+                $('meta[name="description"]').attr('content')
+                || $('meta[property="og:description"]').attr('content')
+            );
+            const articleText = this._extractTrendArticleText($);
+
+            const sections = [
+                '--- TREND REFERENCE ARTICLE ---',
+                `Trend selecionada: ${this._normalizeWhitespace(trendTitle || pageTitle || 'Sem titulo')}`,
+                `URL de origem: ${normalizedUrl}`
+            ];
+
+            if (pageTitle) sections.push(`Titulo da pagina: ${pageTitle}`);
+            if (description) sections.push(`Resumo da pagina: ${description}`);
+            if (articleText) sections.push(`Conteudo extraido da materia:\n${articleText.slice(0, 12000)}`);
+            sections.push('Use esta materia apenas como contexto de pauta e adapte o conteudo ao posicionamento e as regras do medico.');
+
+            return `\n${sections.join('\n\n')}\n`;
+        } catch (error) {
+            throw new Error(`Failed to fetch trend article context: ${error.message}`);
+        }
+    }
+
     /**
      * Synthesizes the final medical copy combining context and user prompt via Gemini File Search/RAG.
      */
-    async generateMedicalCopy(userPrompt, medicalContext) {
+    async generateMedicalCopy(userPrompt, medicalContext, trendContext = '') {
         console.log(`Preparing context for Gemini File Search/RAG...`);
 
         const tempFilePath = path.join(os.tmpdir(), `context_${Date.now()}.txt`);
 
         try {
             // Write context to a temporary file to be uploaded to Gemini File API (File Search Tool equivalent)
-            fs.writeFileSync(tempFilePath, medicalContext);
+            const combinedContext = [medicalContext, trendContext].filter(Boolean).join('\n');
+            fs.writeFileSync(tempFilePath, combinedContext);
 
             console.log(`Uploading context to Gemini File Search repository...`);
             const uploadResult = await this.fileManager.uploadFile(tempFilePath, {
