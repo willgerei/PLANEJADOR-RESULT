@@ -127,7 +127,7 @@ Hashtags: #[HashtagDoCliente1] #[HashtagDoCliente2] #[HashtagDoTema]`;
     }
 
     /**
-     * Traduz e sumariza um tópico do Byrdie para post de Instagram
+     * Traduz e sumariza um tópico das trends para post de Instagram
      */
     async translateTrend(title) {
         try {

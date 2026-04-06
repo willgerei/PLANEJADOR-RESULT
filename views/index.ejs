@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ResultPubli - Uxerflow Edition</title>
+    <title>ResultPubli - Planejador</title>
     <link rel="stylesheet" href="/styles.css">
     <link rel="icon" type="image/png" href="/logo-r.png">
 </head>
@@ -138,6 +138,48 @@
                     <div class="trend-card visible stagger-4">
                         <div class="title">Carregando tendências...</div>
                     </div>
+                    <div class="trend-card visible stagger-5">
+                        <div class="title">Carregando tendências...</div>
+                    </div>
+                    <div class="trend-card visible stagger-6">
+                        <div class="title">Carregando tendências...</div>
+                    </div>
+                    <div class="trend-card visible stagger-7">
+                        <div class="title">Carregando tendências...</div>
+                    </div>
+                    <div class="trend-card visible stagger-8">
+                        <div class="title">Carregando tendências...</div>
+                    </div>
+                    <div class="trend-card visible stagger-9">
+                        <div class="title">Carregando tendências...</div>
+                    </div>
+                    <div class="trend-card visible stagger-10">
+                        <div class="title">Carregando tendências...</div>
+                    </div>
+                    <div class="trend-card visible stagger-11">
+                        <div class="title">Carregando tendências...</div>
+                    </div>
+                    <div class="trend-card visible stagger-12">
+                        <div class="title">Carregando tendências...</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-feedback-cta-wrap">
+                    <button id="open-product-feedback" class="dashboard-feedback-trigger" type="button">
+                        Está gostando da ferramenta? Tem ideias de melhorias? Dê um feedback!
+                    </button>
+
+                    <div id="product-feedback-panel" class="product-feedback-panel hidden">
+                        <p>Seu feedback vai direto para o e-mail de melhoria do produto.</p>
+                        <textarea id="product-feedback-text"
+                            placeholder="Conte o que está funcionando bem e o que pode melhorar..."></textarea>
+                        <div class="product-feedback-actions">
+                            <button id="product-feedback-cancel" class="product-feedback-btn" type="button">Cancelar</button>
+                            <button id="product-feedback-send" class="product-feedback-btn primary"
+                                type="button">Enviar feedback</button>
+                            <span id="product-feedback-status" class="product-feedback-status"></span>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -145,10 +187,10 @@
             <section id="orchestration-tab" class="tab-pane">
                 <div class="form-card">
                     <h2 class="form-title">Agente de Conteúdos</h2>
-                    <p class="form-subtitle">Crie conteúdos estratégicos baseados em evidência e branding.</p>
+                    <p class="form-subtitle">Crie conteúdos estratégicos baseados em evidência com o método Result.</p>
 
                     <div class="input-group">
-                        <label class="input-label">Gerente de Customer Success (CS)</label>
+                        <label class="input-label">Customer Success (CS)</label>
                         <select id="cs-select">
                             <option value="" disabled selected>Selecione seu atendimento...</option>
                             <option>Marcos (Experience)</option>
@@ -160,6 +202,7 @@
                             <option>Arieli (Liderança)</option>
                             <option>Suellen (Customer Success)</option>
                             <option>Carol (Customer Success)</option>
+                            <option>Outro</option>
                         </select>
                     </div>
 
@@ -263,6 +306,7 @@
             setGreeting();
             loadDoctors();
             loadTrends();
+            setupProductFeedbackPanel();
 
             // Staggered animation trigger
             setTimeout(() => {
@@ -370,6 +414,58 @@
             lastGeneratedCopy = '';
         }
 
+        function setupProductFeedbackPanel() {
+            const openBtn = document.getElementById('open-product-feedback');
+            const panel = document.getElementById('product-feedback-panel');
+            const cancelBtn = document.getElementById('product-feedback-cancel');
+            const sendBtn = document.getElementById('product-feedback-send');
+            const ta = document.getElementById('product-feedback-text');
+            const statusEl = document.getElementById('product-feedback-status');
+
+            if (!openBtn || !panel || !cancelBtn || !sendBtn || !ta || !statusEl) return;
+
+            openBtn.addEventListener('click', () => {
+                panel.classList.toggle('hidden');
+                if (!panel.classList.contains('hidden')) ta.focus();
+            });
+
+            cancelBtn.addEventListener('click', () => {
+                panel.classList.add('hidden');
+                ta.value = '';
+                statusEl.innerText = '';
+            });
+
+            sendBtn.addEventListener('click', async () => {
+                const text = ta.value.trim();
+                if (!text) return alert('Escreva uma mensagem antes de enviar.');
+
+                sendBtn.disabled = true;
+                statusEl.innerText = 'Enviando...';
+
+                try {
+                    const resp = await fetch('/api/tool-feedback-email', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: text })
+                    });
+                    const data = await resp.json();
+
+                    if (!resp.ok) throw new Error(data.error || 'Falha ao enviar.');
+
+                    statusEl.innerText = 'Obrigado pelo feedback.';
+                    ta.value = '';
+                    setTimeout(() => {
+                        panel.classList.add('hidden');
+                        statusEl.innerText = '';
+                    }, 1200);
+                } catch (err) {
+                    statusEl.innerText = err.message || 'Erro ao enviar.';
+                } finally {
+                    sendBtn.disabled = false;
+                }
+            });
+        }
+
         function extractFilenameFromDisposition(disposition) {
             if (!disposition) return null;
             const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
@@ -446,15 +542,15 @@
             if (document.getElementById('feedback-modal-overlay')) return;
             const html = `
 <style>
-  #feedback-modal-overlay { position: fixed; inset: 0; background: rgba(13,14,16,0.8); display: none; align-items: center; justify-content: center; z-index: 1200; }
-  #feedback-modal { width:100%; max-width:720px; background:#1A1B1E; border-radius:12px; padding:20px; box-shadow:0 12px 30px rgba(0,0,0,0.6); color:#F4F4F2; border:1px solid rgba(255,255,255,0.02); }
+  #feedback-modal-overlay { position: fixed; inset: 0; background: rgba(17,24,39,0.18); display: none; align-items: center; justify-content: center; z-index: 1200; }
+  #feedback-modal { width:100%; max-width:720px; background:var(--bg-card); border-radius:14px; padding:20px; box-shadow:var(--shadow-float); color:var(--text-main); border:1px solid var(--border-soft); }
   #feedback-modal h3 { margin:0 0 8px 0; font-size:1.05rem; }
-  #feedback-modal p { margin:0 0 12px 0; color:#D1D1D0; font-size:0.9rem; }
-  #feedback-modal textarea { width:100%; background:#0D0E10; border:1px solid #6B2030; color:#F4F4F2; padding:12px; border-radius:8px; resize:vertical; min-height:120px; font-size:0.95rem; }
+  #feedback-modal p { margin:0 0 12px 0; color:var(--text-secondary); font-size:0.9rem; }
+  #feedback-modal textarea { width:100%; background:var(--bg-hover); border:1px solid var(--border-soft); color:var(--text-main); padding:12px; border-radius:10px; resize:vertical; min-height:120px; font-size:0.95rem; }
   .feedback-actions { display:flex; gap:10px; margin-top:12px; align-items:center; }
-  .feedback-btn-cancel { background:transparent; border:1px solid rgba(255,255,255,0.06); color:#D1D1D0; padding:8px 12px; border-radius:8px; cursor:pointer; }
-  .feedback-btn-send { background:#550015; color:#F4F4F2; border:none; padding:10px 14px; border-radius:8px; cursor:pointer; font-weight:600; }
-  #feedback-modal .status { margin-left:8px; color:#D1D1D0; font-size:0.9rem; display:none; }
+  .feedback-btn-cancel { background:var(--bg-card); border:1px solid var(--border-soft); color:var(--text-secondary); padding:8px 12px; border-radius:10px; cursor:pointer; }
+  .feedback-btn-send { background:var(--text-main); color:#fff; border:none; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600; }
+  #feedback-modal .status { margin-left:8px; color:var(--text-secondary); font-size:0.9rem; display:none; }
 </style>
 <div id="feedback-modal-overlay" aria-hidden="true">
   <div id="feedback-modal" role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title">

@@ -41,6 +41,14 @@ function dbGet(sql, params = []) {
     });
 }
 
+function toBase64Url(input) {
+    return Buffer.from(input)
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+}
+
 // Setup View Engine
 app.set('views', path.join(__dirname, '../views'));
 app.set('view engine', 'ejs');
@@ -108,7 +116,8 @@ app.get('/auth/google',
             'email',
             'https://www.googleapis.com/auth/documents',
             'https://www.googleapis.com/auth/drive.readonly',
-            'https://www.googleapis.com/auth/drive.file'
+            'https://www.googleapis.com/auth/drive.file',
+            'https://www.googleapis.com/auth/gmail.send'
         ]
     })
 );
@@ -280,6 +289,54 @@ app.post('/api/feedback', ensureAuthenticated, async (req, res) => {
     }
 });
 
+app.post('/api/tool-feedback-email', ensureAuthenticated, async (req, res) => {
+    const { message } = req.body;
+    const trimmedMessage = typeof message === 'string' ? message.trim() : '';
+
+    if (!trimmedMessage) {
+        return res.status(400).json({ error: 'message is required.' });
+    }
+
+    const senderEmail = req.user?.emails?.[0]?.value || req.user?._json?.email;
+    if (!senderEmail) {
+        return res.status(400).json({ error: 'Unable to detect logged user email.' });
+    }
+
+    try {
+        const senderName = req.user?.displayName || senderEmail.split('@')[0];
+        const now = new Date();
+        const dateLabel = now.toLocaleString('pt-BR');
+
+        const rawEmail = [
+            `From: "${senderName}" <${senderEmail}>`,
+            `To: willian.gerei@resultpubli.com.br`,
+            `Subject: Feedback da ferramenta - ${senderName}`,
+            `Reply-To: ${senderEmail}`,
+            'MIME-Version: 1.0',
+            'Content-Type: text/plain; charset=UTF-8',
+            '',
+            `Feedback enviado por: ${senderName} (${senderEmail})`,
+            `Data: ${dateLabel}`,
+            '',
+            trimmedMessage
+        ].join('\r\n');
+
+        const auth = new google.auth.OAuth2();
+        auth.setCredentials({ access_token: req.user.accessToken });
+        const gmail = google.gmail({ version: 'v1', auth });
+
+        await gmail.users.messages.send({
+            userId: 'me',
+            requestBody: { raw: toBase64Url(rawEmail) }
+        });
+
+        return res.status(200).json({ message: 'Feedback enviado com sucesso.' });
+    } catch (err) {
+        console.error('[Tool Feedback] Failed to send email:', err.message);
+        return res.status(500).json({ error: 'Falha ao enviar feedback por e-mail: ' + err.message });
+    }
+});
+
 // ── Onboarding Route (Tier 3 Execution) ─────────────────────────────────────
 app.post('/api/onboard-doctor', ensureAuthenticated, upload.array('files'), async (req, res) => {
     const { name, specialty, cs_responsible, briefing } = req.body;
@@ -377,11 +434,19 @@ app.get('/api/trends', ensureAuthenticated, async (req, res) => {
     }
 
     try {
-        console.log('[Trends] Buscando novos temas no Byrdie...');
+        console.log('[Trends] Buscando novos temas...');
         const urls = [
             'https://www.byrdie.com/wellness-4628395',
             'https://www.byrdie.com/hair-4628407',
-            'https://www.theskimm.com/health'
+            'https://www.theskimm.com/health',
+            'https://labmuffin.com',
+            'https://www.allure.com/wellness/body-image',
+            'https://www.allure.com/wellness/mental-health',
+            'https://www.self.com/health',
+            'https://www.self.com/beauty',
+            'https://www.mindbodygreen.com/health',
+            'https://www.mindbodygreen.com/beauty'
+
         ];
 
         let trends = [];
@@ -426,7 +491,7 @@ app.get('/api/trends', ensureAuthenticated, async (req, res) => {
 // Starts the Medical Controller Server
 app.listen(PORT, () => {
     console.log(`ResultPubli Agentic System running on http://localhost:${PORT}`);
-    console.log('Running in Corporate Mode. Premium Light Theme active.');
+    console.log('Running in Corporate Mode.');
 });
 
 // Handle graceful shutdown
