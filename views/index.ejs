@@ -49,6 +49,21 @@
                         <span class="nav-label">Clientes</span>
                     </a>
                 </li>
+                <li>
+                    <a href="#" onclick="switchTab('tools-tab', this)" title="Outras ferramentas">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="6" height="6" rx="1" />
+                            <rect x="15" y="3" width="6" height="6" rx="1" />
+                            <rect x="3" y="15" width="6" height="6" rx="1" />
+                            <path d="M16 16h5v5h-5z" />
+                            <path d="M15 11h2" />
+                            <path d="M7 11h2" />
+                            <path d="M11 15v2" />
+                            <path d="M11 7v2" />
+                        </svg>
+                        <span class="nav-label">Outras ferramentas</span>
+                    </a>
+                </li>
             </ul>
         </nav>
         <div class="sidebar-bottom">
@@ -321,9 +336,191 @@
                 </div>
             </section>
 
+            <!-- ── TAB: OUTRAS FERRAMENTAS ── -->
+            <section id="tools-tab" class="tab-pane">
+                <div class="tools-page">
+                    <div class="tools-header">
+                        <span class="tools-kicker">UTILITÁRIOS</span>
+                        <h2>Outras ferramentas</h2>
+                        <p>Um hub para recursos rápidos do time. Já temos QR Code, link de WhatsApp e agora um color picker com alvos móveis.</p>
+                    </div>
+
+                    <div class="tools-grid">
+                        <div class="tool-card qr-tool-card">
+                            <div class="tool-card-icon" aria-hidden="true">
+                                <svg viewBox="0 0 96 96" fill="none">
+                                    <rect x="8" y="8" width="28" height="28" rx="4" fill="#111827" />
+                                    <rect x="16" y="16" width="12" height="12" rx="2" fill="#FFFFFF" />
+                                    <rect x="60" y="8" width="28" height="28" rx="4" fill="#111827" />
+                                    <rect x="68" y="16" width="12" height="12" rx="2" fill="#FFFFFF" />
+                                    <rect x="8" y="60" width="28" height="28" rx="4" fill="#111827" />
+                                    <rect x="16" y="68" width="12" height="12" rx="2" fill="#FFFFFF" />
+                                    <rect x="48" y="48" width="8" height="8" rx="2" fill="#A855F7" />
+                                    <rect x="60" y="48" width="12" height="12" rx="3" fill="#111827" />
+                                    <rect x="76" y="48" width="12" height="28" rx="3" fill="#A855F7" />
+                                    <rect x="48" y="64" width="12" height="24" rx="3" fill="#111827" />
+                                    <rect x="64" y="68" width="8" height="8" rx="2" fill="#FFFFFF" />
+                                </svg>
+                            </div>
+
+                            <div class="tool-card-copy">
+                                <h3>Gerador de QR Code</h3>
+                                <p>Digite um texto ou link, gere o QR na hora e baixe em PNG ou SVG vetorial.</p>
+                            </div>
+
+                            <div class="input-group">
+                                <label class="input-label" for="qr-input">Texto ou link</label>
+                                <textarea id="qr-input" rows="4"
+                                    placeholder="Ex: https://resultpubli.com.br ou qualquer texto que voce queira converter em QR Code."></textarea>
+                            </div>
+
+                            <button class="btn-hero btn-hero-primary qr-generate-btn" type="button"
+                                onclick="openQrGeneratorModal()">
+                                Gerar QR Code
+                            </button>
+                            <div id="qr-inline-status" class="tool-inline-status" aria-live="polite"></div>
+                        </div>
+
+                        <div class="tool-card whatsapp-tool-card">
+                            <div class="tool-card-icon whatsapp-icon" aria-hidden="true">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+                                    class="bi bi-whatsapp" viewBox="0 0 16 16">
+                                    <path
+                                        d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232" />
+                                </svg>
+                            </div>
+
+                            <div class="tool-card-copy">
+                                <h3>Gerador de link WhatsApp</h3>
+                                <p>Informe o número e a mensagem padrão para gerar o link pronto em dois formatos.</p>
+                            </div>
+
+                            <div class="input-group">
+                                <label class="input-label" for="whatsapp-number">Número</label>
+                                <input type="text" id="whatsapp-number"
+                                    placeholder="Ex: 5511999998888 ou (11) 99999-8888">
+                            </div>
+
+                            <div class="input-group">
+                                <label class="input-label" for="whatsapp-message">Mensagem padrão</label>
+                                <textarea id="whatsapp-message" rows="4"
+                                    placeholder="Ex: Olá! Vim pelo site e gostaria de falar com vocês."></textarea>
+                            </div>
+
+                            <button class="btn-hero btn-hero-primary qr-generate-btn" type="button"
+                                onclick="generateWhatsAppLinks()">
+                                Gerar link WhatsApp
+                            </button>
+                            <div id="whatsapp-inline-status" class="tool-inline-status" aria-live="polite"></div>
+
+                            <div id="whatsapp-result" class="whatsapp-result hidden">
+                                <div class="whatsapp-result-item">
+                                    <label class="input-label" for="whatsapp-wa-me-link">Link `wa.me`</label>
+                                    <div class="tool-output-row">
+                                        <input type="text" id="whatsapp-wa-me-link" readonly>
+                                        <button class="tool-output-btn" type="button"
+                                            onclick="copyToolOutput('whatsapp-wa-me-link', 'Link wa.me copiado.')">
+                                            Copiar
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="whatsapp-result-item">
+                                    <label class="input-label" for="whatsapp-api-link">Link `api.whatsapp.com`</label>
+                                    <div class="tool-output-row">
+                                        <input type="text" id="whatsapp-api-link" readonly>
+                                        <button class="tool-output-btn" type="button"
+                                            onclick="copyToolOutput('whatsapp-api-link', 'Link api.whatsapp.com copiado.')">
+                                            Copiar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="tool-card tool-card-wide color-picker-card">
+                            <div class="tool-card-icon color-picker-icon" aria-hidden="true">
+                                <svg viewBox="0 0 96 96" fill="none">
+                                    <circle cx="30" cy="30" r="18" fill="#EF4444" />
+                                    <circle cx="66" cy="30" r="18" fill="#F59E0B" />
+                                    <circle cx="30" cy="66" r="18" fill="#10B981" />
+                                    <circle cx="66" cy="66" r="18" fill="#3B82F6" />
+                                    <circle cx="48" cy="48" r="10" fill="#FFFFFF" />
+                                </svg>
+                            </div>
+
+                            <div class="tool-card-copy">
+                                <h3>Color Picker</h3>
+                                <p>Suba uma imagem e a ferramenta encontra 4 cores presentes nela. Depois, arraste os alvos circulares sobre a imagem para atualizar cada hexadecimal em tempo real.</p>
+                            </div>
+
+                            <div class="color-picker-toolbar">
+                                <input type="file" id="color-picker-upload" accept="image/*" hidden>
+                                <button class="btn-pill btn-pill-dark" type="button" onclick="triggerColorPickerUpload()">
+                                    Selecionar imagem
+                                </button>
+                                <span class="color-picker-toolbar-hint">
+                                    PNG, JPG ou WEBP. Os 4 alvos podem ser reposicionados manualmente.
+                                </span>
+                            </div>
+
+                            <div id="color-picker-status" class="tool-inline-status" aria-live="polite"></div>
+
+                            <div id="color-picker-empty" class="color-picker-empty" onclick="triggerColorPickerUpload()">
+                                <div class="color-picker-empty-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                        <polyline points="17 8 12 3 7 8" />
+                                        <line x1="12" y1="3" x2="12" y2="15" />
+                                    </svg>
+                                </div>
+                                <strong>Suba uma imagem para extrair a paleta</strong>
+                                <p>A ferramenta detecta 4 cores e posiciona alvos móveis para você refinar cada amostra.</p>
+                            </div>
+
+                            <div id="color-picker-stage" class="color-picker-stage hidden">
+                                <div id="color-picker-image-shell" class="color-picker-image-shell">
+                                    <img id="color-picker-image" alt="Imagem enviada para extrair cores">
+                                    <div id="color-picker-markers" class="color-picker-markers"></div>
+                                </div>
+                            </div>
+
+                            <div id="color-picker-swatches" class="color-picker-swatches hidden"></div>
+                            <canvas id="color-picker-canvas" class="hidden"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
         </div>
     </main>
 
+    <div id="qr-modal-overlay" class="qr-modal-overlay hidden" aria-hidden="true">
+        <div class="qr-modal" role="dialog" aria-modal="true" aria-labelledby="qr-modal-title">
+            <div class="qr-modal-header">
+                <div>
+                    <h3 id="qr-modal-title">QR Code gerado</h3>
+                    <p>Seu QR Code esta pronto para baixar.</p>
+                </div>
+                <button id="qr-modal-close" class="qr-modal-close" type="button">Fechar</button>
+            </div>
+
+            <div class="qr-preview-frame">
+                <canvas id="qr-preview-canvas" class="qr-preview-canvas"></canvas>
+            </div>
+
+            <div class="qr-modal-actions">
+                <button id="qr-download-png" class="btn-pill btn-pill-dark qr-download-btn" type="button">
+                    Baixar PNG
+                </button>
+                <button id="qr-download-svg" class="btn-pill qr-download-btn qr-download-btn-secondary" type="button">
+                    Baixar SVG
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/qr-code-generator.js"></script>
     <script>
         let currentDoctorId = null;
         let lastGeneratedDoctorId = null;
@@ -332,6 +529,18 @@
         const TRENDS_TOTAL = 12;
         let currentTrends = [];
         let trendSearchState = { query: '', matches: [], cursor: -1 };
+        let activeQrCode = null;
+        let activeQrSvg = '';
+        let activeQrValue = '';
+        const COLOR_PICKER_MARKER_COUNT = 4;
+        const colorPickerState = {
+            objectUrl: '',
+            pixelData: null,
+            pixelWidth: 0,
+            pixelHeight: 0,
+            markers: [],
+            activeMarkerIndex: null
+        };
 
         document.addEventListener('DOMContentLoaded', () => {
             setGreeting();
@@ -339,6 +548,9 @@
             loadDoctors();
             loadTrends();
             setupProductFeedbackPanel();
+            setupQrTool();
+            setupWhatsAppTool();
+            setupColorPickerTool();
 
             // Staggered animation trigger
             setTimeout(() => {
@@ -582,6 +794,678 @@
             // Fix sidebar active state visual
             document.querySelectorAll('.sidebar nav a').forEach(a => a.classList.remove('active'));
             if (el) el.classList.add('active');
+        }
+
+        function setToolInlineStatus(elementId, message, isError = false) {
+            const statusEl = document.getElementById(elementId);
+            if (!statusEl) return;
+            statusEl.innerText = message || '';
+            statusEl.classList.toggle('error', Boolean(isError && message));
+            statusEl.classList.toggle('success', Boolean(!isError && message));
+        }
+
+        function setQrInlineStatus(message, isError = false) {
+            setToolInlineStatus('qr-inline-status', message, isError);
+        }
+
+        function setupQrTool() {
+            const overlay = document.getElementById('qr-modal-overlay');
+            const closeBtn = document.getElementById('qr-modal-close');
+            const downloadPngBtn = document.getElementById('qr-download-png');
+            const downloadSvgBtn = document.getElementById('qr-download-svg');
+            const input = document.getElementById('qr-input');
+
+            if (closeBtn) closeBtn.addEventListener('click', closeQrModal);
+            if (overlay) {
+                overlay.addEventListener('click', (event) => {
+                    if (event.target === overlay) closeQrModal();
+                });
+            }
+            if (downloadPngBtn) downloadPngBtn.addEventListener('click', downloadQrPng);
+            if (downloadSvgBtn) downloadSvgBtn.addEventListener('click', downloadQrSvg);
+            if (input) {
+                input.addEventListener('input', () => setQrInlineStatus(''));
+                input.addEventListener('keydown', (event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                        event.preventDefault();
+                        openQrGeneratorModal();
+                    }
+                });
+            }
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') closeQrModal();
+            });
+        }
+
+        function setWhatsAppInlineStatus(message, isError = false) {
+            setToolInlineStatus('whatsapp-inline-status', message, isError);
+        }
+
+        function setColorPickerStatus(message, isError = false) {
+            setToolInlineStatus('color-picker-status', message, isError);
+        }
+
+        function setupWhatsAppTool() {
+            const numberInput = document.getElementById('whatsapp-number');
+            const messageInput = document.getElementById('whatsapp-message');
+
+            if (numberInput) {
+                numberInput.addEventListener('input', () => setWhatsAppInlineStatus(''));
+                numberInput.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        generateWhatsAppLinks();
+                    }
+                });
+            }
+
+            if (messageInput) {
+                messageInput.addEventListener('input', () => setWhatsAppInlineStatus(''));
+                messageInput.addEventListener('keydown', (event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                        event.preventDefault();
+                        generateWhatsAppLinks();
+                    }
+                });
+            }
+        }
+
+        function setupColorPickerTool() {
+            const uploadInput = document.getElementById('color-picker-upload');
+            const imageShell = document.getElementById('color-picker-image-shell');
+
+            if (uploadInput) {
+                uploadInput.addEventListener('change', (event) => {
+                    const file = event.target.files && event.target.files[0];
+                    if (file) loadColorPickerImage(file);
+                });
+            }
+
+            if (imageShell) {
+                imageShell.addEventListener('pointerdown', handleColorPickerPointerDown);
+            }
+
+            document.addEventListener('pointermove', handleColorPickerPointerMove);
+            document.addEventListener('pointerup', handleColorPickerPointerUp);
+            document.addEventListener('pointercancel', handleColorPickerPointerUp);
+        }
+
+        function triggerColorPickerUpload() {
+            const input = document.getElementById('color-picker-upload');
+            if (!input) return;
+            input.value = '';
+            input.click();
+        }
+
+        function loadColorPickerImage(file) {
+            if (!file || !String(file.type || '').startsWith('image/')) {
+                setColorPickerStatus('Envie um arquivo de imagem valido.', true);
+                return;
+            }
+
+            const objectUrl = URL.createObjectURL(file);
+            const image = new Image();
+
+            image.onload = () => {
+                try {
+                    prepareColorPickerImage(image, objectUrl);
+                } catch (error) {
+                    console.error(error);
+                    URL.revokeObjectURL(objectUrl);
+                    setColorPickerStatus('Nao foi possivel processar a imagem enviada.', true);
+                }
+            };
+
+            image.onerror = () => {
+                URL.revokeObjectURL(objectUrl);
+                setColorPickerStatus('Falha ao carregar a imagem. Tente outro arquivo.', true);
+            };
+
+            image.src = objectUrl;
+        }
+
+        function prepareColorPickerImage(image, objectUrl) {
+            const canvas = document.getElementById('color-picker-canvas');
+            const imageEl = document.getElementById('color-picker-image');
+            const emptyState = document.getElementById('color-picker-empty');
+            const stage = document.getElementById('color-picker-stage');
+            if (!canvas || !imageEl || !emptyState || !stage) return;
+
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            const maxDimension = 1200;
+            const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+            const width = Math.max(1, Math.round(image.naturalWidth * scale));
+            const height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+            canvas.width = width;
+            canvas.height = height;
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(image, 0, 0, width, height);
+
+            const imageData = ctx.getImageData(0, 0, width, height);
+            if (colorPickerState.objectUrl) URL.revokeObjectURL(colorPickerState.objectUrl);
+
+            colorPickerState.objectUrl = objectUrl;
+            colorPickerState.pixelData = imageData.data;
+            colorPickerState.pixelWidth = width;
+            colorPickerState.pixelHeight = height;
+            colorPickerState.markers = buildInitialColorMarkers(imageData.data, width, height, COLOR_PICKER_MARKER_COUNT);
+            colorPickerState.activeMarkerIndex = null;
+
+            imageEl.onload = () => {
+                renderColorPickerMarkers();
+                renderColorPickerSwatches();
+                setColorPickerStatus('4 cores detectadas. Arraste os alvos para ajustar a paleta.');
+            };
+            imageEl.src = objectUrl;
+
+            emptyState.classList.add('hidden');
+            stage.classList.remove('hidden');
+        }
+
+        function buildInitialColorMarkers(pixelData, width, height, count) {
+            const pixels = collectColorSamplePixels(pixelData, width, height);
+            if (!pixels.length) {
+                return buildFallbackColorMarkers(count).map((marker) => refreshColorMarker(marker.x, marker.y));
+            }
+
+            const clusters = runColorKMeans(pixels, count);
+            const markers = clusters.map((cluster) => buildMarkerFromCluster(cluster, width, height));
+
+            while (markers.length < count) {
+                markers.push(buildFallbackColorMarkers(count)[markers.length]);
+            }
+
+            return markers
+                .slice(0, count)
+                .sort((a, b) => (a.x - b.x) || (a.y - b.y))
+                .map((marker) => refreshColorMarker(marker.x, marker.y));
+        }
+
+        function collectColorSamplePixels(pixelData, width, height) {
+            const pixels = [];
+            const step = Math.max(1, Math.floor(Math.max(width, height) / 80));
+
+            for (let y = 0; y < height; y += step) {
+                for (let x = 0; x < width; x += step) {
+                    const index = ((y * width) + x) * 4;
+                    const alpha = pixelData[index + 3];
+                    if (alpha < 40) continue;
+
+                    pixels.push({
+                        r: pixelData[index],
+                        g: pixelData[index + 1],
+                        b: pixelData[index + 2],
+                        x,
+                        y
+                    });
+                }
+            }
+
+            return pixels;
+        }
+
+        function runColorKMeans(pixels, count) {
+            const centroids = initializeColorCentroids(pixels, count);
+            const assignments = new Array(pixels.length).fill(0);
+
+            for (let iteration = 0; iteration < 7; iteration += 1) {
+                const sums = Array.from({ length: count }, () => ({
+                    r: 0,
+                    g: 0,
+                    b: 0,
+                    count: 0
+                }));
+
+                for (let i = 0; i < pixels.length; i += 1) {
+                    const pixel = pixels[i];
+                    let nearestIndex = 0;
+                    let nearestDistance = Number.POSITIVE_INFINITY;
+
+                    for (let j = 0; j < centroids.length; j += 1) {
+                        const distance = getColorDistanceSq(pixel, centroids[j]);
+                        if (distance < nearestDistance) {
+                            nearestDistance = distance;
+                            nearestIndex = j;
+                        }
+                    }
+
+                    assignments[i] = nearestIndex;
+                    sums[nearestIndex].r += pixel.r;
+                    sums[nearestIndex].g += pixel.g;
+                    sums[nearestIndex].b += pixel.b;
+                    sums[nearestIndex].count += 1;
+                }
+
+                let moved = false;
+
+                for (let i = 0; i < centroids.length; i += 1) {
+                    if (!sums[i].count) {
+                        const fallback = pixels[Math.min(pixels.length - 1, i * Math.floor(pixels.length / Math.max(1, count)))];
+                        centroids[i] = { r: fallback.r, g: fallback.g, b: fallback.b };
+                        moved = true;
+                        continue;
+                    }
+
+                    const nextCentroid = {
+                        r: sums[i].r / sums[i].count,
+                        g: sums[i].g / sums[i].count,
+                        b: sums[i].b / sums[i].count
+                    };
+
+                    if (getColorDistanceSq(nextCentroid, centroids[i]) > 1) moved = true;
+                    centroids[i] = nextCentroid;
+                }
+
+                if (!moved) break;
+            }
+
+            const clusters = Array.from({ length: count }, (_, index) => ({
+                centroid: centroids[index],
+                pixels: []
+            }));
+
+            for (let i = 0; i < pixels.length; i += 1) {
+                clusters[assignments[i]].pixels.push(pixels[i]);
+            }
+
+            return clusters.filter((cluster) => cluster.pixels.length);
+        }
+
+        function initializeColorCentroids(pixels, count) {
+            const average = pixels.reduce((accumulator, pixel) => {
+                accumulator.r += pixel.r;
+                accumulator.g += pixel.g;
+                accumulator.b += pixel.b;
+                return accumulator;
+            }, { r: 0, g: 0, b: 0 });
+
+            average.r /= pixels.length;
+            average.g /= pixels.length;
+            average.b /= pixels.length;
+
+            const centroids = [];
+            let firstPixel = pixels[0];
+            let greatestDistance = -1;
+
+            pixels.forEach((pixel) => {
+                const distance = getColorDistanceSq(pixel, average);
+                if (distance > greatestDistance) {
+                    greatestDistance = distance;
+                    firstPixel = pixel;
+                }
+            });
+
+            centroids.push({ r: firstPixel.r, g: firstPixel.g, b: firstPixel.b });
+
+            while (centroids.length < count) {
+                let bestPixel = pixels[0];
+                let bestDistance = -1;
+
+                pixels.forEach((pixel) => {
+                    let nearest = Number.POSITIVE_INFINITY;
+                    centroids.forEach((centroid) => {
+                        nearest = Math.min(nearest, getColorDistanceSq(pixel, centroid));
+                    });
+
+                    if (nearest > bestDistance) {
+                        bestDistance = nearest;
+                        bestPixel = pixel;
+                    }
+                });
+
+                centroids.push({ r: bestPixel.r, g: bestPixel.g, b: bestPixel.b });
+            }
+
+            return centroids;
+        }
+
+        function getColorDistanceSq(a, b) {
+            const dr = a.r - b.r;
+            const dg = a.g - b.g;
+            const db = a.b - b.b;
+            return (dr * dr) + (dg * dg) + (db * db);
+        }
+
+        function buildMarkerFromCluster(cluster, width, height) {
+            const averagePosition = cluster.pixels.reduce((accumulator, pixel) => {
+                accumulator.x += pixel.x;
+                accumulator.y += pixel.y;
+                return accumulator;
+            }, { x: 0, y: 0 });
+
+            averagePosition.x /= cluster.pixels.length;
+            averagePosition.y /= cluster.pixels.length;
+
+            let bestPixel = cluster.pixels[0];
+            let bestScore = Number.POSITIVE_INFINITY;
+
+            cluster.pixels.forEach((pixel) => {
+                const colorDistance = getColorDistanceSq(pixel, cluster.centroid);
+                const positionDistance = ((pixel.x - averagePosition.x) ** 2) + ((pixel.y - averagePosition.y) ** 2);
+                const score = colorDistance + (positionDistance * 0.08);
+
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestPixel = pixel;
+                }
+            });
+
+            return {
+                x: width <= 1 ? 0.5 : bestPixel.x / (width - 1),
+                y: height <= 1 ? 0.5 : bestPixel.y / (height - 1)
+            };
+        }
+
+        function buildFallbackColorMarkers(count) {
+            return Array.from({ length: count }, (_, index) => ({
+                x: (index + 1) / (count + 1),
+                y: 0.45 + ((index % 2) * 0.12)
+            }));
+        }
+
+        function refreshColorMarker(xRatio, yRatio) {
+            const sampled = sampleColorAtRatios(xRatio, yRatio);
+            return {
+                x: clamp(xRatio, 0, 1),
+                y: clamp(yRatio, 0, 1),
+                r: sampled.r,
+                g: sampled.g,
+                b: sampled.b,
+                hex: rgbToHex(sampled.r, sampled.g, sampled.b)
+            };
+        }
+
+        function sampleColorAtRatios(xRatio, yRatio) {
+            const width = colorPickerState.pixelWidth;
+            const height = colorPickerState.pixelHeight;
+            const pixelData = colorPickerState.pixelData;
+
+            if (!pixelData || !width || !height) {
+                return { r: 17, g: 24, b: 39 };
+            }
+
+            const centerX = Math.round(clamp(xRatio, 0, 1) * Math.max(0, width - 1));
+            const centerY = Math.round(clamp(yRatio, 0, 1) * Math.max(0, height - 1));
+            const radius = Math.max(1, Math.round(Math.min(width, height) / 180));
+            let red = 0;
+            let green = 0;
+            let blue = 0;
+            let count = 0;
+
+            for (let y = centerY - radius; y <= centerY + radius; y += 1) {
+                if (y < 0 || y >= height) continue;
+
+                for (let x = centerX - radius; x <= centerX + radius; x += 1) {
+                    if (x < 0 || x >= width) continue;
+
+                    const index = ((y * width) + x) * 4;
+                    if (pixelData[index + 3] < 40) continue;
+
+                    red += pixelData[index];
+                    green += pixelData[index + 1];
+                    blue += pixelData[index + 2];
+                    count += 1;
+                }
+            }
+
+            if (!count) {
+                const fallbackIndex = ((centerY * width) + centerX) * 4;
+                return {
+                    r: pixelData[fallbackIndex] || 17,
+                    g: pixelData[fallbackIndex + 1] || 24,
+                    b: pixelData[fallbackIndex + 2] || 39
+                };
+            }
+
+            return {
+                r: Math.round(red / count),
+                g: Math.round(green / count),
+                b: Math.round(blue / count)
+            };
+        }
+
+        function rgbToHex(r, g, b) {
+            return `#${[r, g, b].map((value) => value.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+        }
+
+        function clamp(value, min, max) {
+            return Math.min(max, Math.max(min, value));
+        }
+
+        function renderColorPickerMarkers() {
+            const markersContainer = document.getElementById('color-picker-markers');
+            if (!markersContainer) return;
+
+            markersContainer.innerHTML = '';
+
+            colorPickerState.markers.forEach((marker, index) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'color-picker-marker';
+                button.dataset.index = String(index);
+                button.title = marker.hex;
+                button.setAttribute('aria-label', `Mover amostra da cor ${index + 1}`);
+                button.style.left = `${marker.x * 100}%`;
+                button.style.top = `${marker.y * 100}%`;
+                button.style.backgroundColor = `rgba(${marker.r}, ${marker.g}, ${marker.b}, 0.24)`;
+                button.innerHTML = '<span>+</span>';
+                markersContainer.appendChild(button);
+            });
+        }
+
+        function renderColorPickerSwatches() {
+            const swatches = document.getElementById('color-picker-swatches');
+            if (!swatches) return;
+
+            if (!colorPickerState.markers.length) {
+                swatches.classList.add('hidden');
+                swatches.innerHTML = '';
+                return;
+            }
+
+            swatches.innerHTML = colorPickerState.markers.map((marker, index) => `
+                <div class="color-swatch-card">
+                    <div class="color-swatch-preview" style="background:${marker.hex}"></div>
+                    <div class="color-swatch-meta">
+                        <span class="color-swatch-label">Cor ${index + 1}</span>
+                        <button class="tool-output-btn color-swatch-copy" type="button"
+                            onclick="copyColorHex(${index})">Copiar HEX</button>
+                    </div>
+                    <div class="color-swatch-hex">${marker.hex}</div>
+                </div>
+            `).join('');
+
+            swatches.classList.remove('hidden');
+        }
+
+        function handleColorPickerPointerDown(event) {
+            const marker = event.target.closest('.color-picker-marker');
+            if (!marker) return;
+
+            event.preventDefault();
+            colorPickerState.activeMarkerIndex = Number(marker.dataset.index);
+            updateColorPickerMarkerPosition(event.clientX, event.clientY);
+        }
+
+        function handleColorPickerPointerMove(event) {
+            if (colorPickerState.activeMarkerIndex === null) return;
+            event.preventDefault();
+            updateColorPickerMarkerPosition(event.clientX, event.clientY);
+        }
+
+        function handleColorPickerPointerUp() {
+            colorPickerState.activeMarkerIndex = null;
+        }
+
+        function updateColorPickerMarkerPosition(clientX, clientY) {
+            const imageShell = document.getElementById('color-picker-image-shell');
+            const markerIndex = colorPickerState.activeMarkerIndex;
+            if (!imageShell || markerIndex === null) return;
+
+            const rect = imageShell.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+
+            const xRatio = clamp((clientX - rect.left) / rect.width, 0, 1);
+            const yRatio = clamp((clientY - rect.top) / rect.height, 0, 1);
+            colorPickerState.markers[markerIndex] = refreshColorMarker(xRatio, yRatio);
+
+            renderColorPickerMarkers();
+            renderColorPickerSwatches();
+        }
+
+        async function copyColorHex(index) {
+            const marker = colorPickerState.markers[index];
+            if (!marker) return;
+
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(marker.hex);
+                } else {
+                    throw new Error('Clipboard indisponivel');
+                }
+
+                setColorPickerStatus(`${marker.hex} copiado com sucesso.`);
+            } catch (error) {
+                console.error(error);
+                setColorPickerStatus('Nao foi possivel copiar automaticamente. Copie manualmente o HEX.', true);
+            }
+        }
+
+        function sanitizeWhatsAppNumber(value) {
+            return String(value || '').replace(/\D/g, '');
+        }
+
+        function generateWhatsAppLinks() {
+            const numberInput = document.getElementById('whatsapp-number');
+            const messageInput = document.getElementById('whatsapp-message');
+            const result = document.getElementById('whatsapp-result');
+            const waMeInput = document.getElementById('whatsapp-wa-me-link');
+            const apiInput = document.getElementById('whatsapp-api-link');
+
+            const sanitizedNumber = sanitizeWhatsAppNumber(numberInput ? numberInput.value : '');
+            const message = messageInput ? messageInput.value.trim() : '';
+
+            if (!sanitizedNumber) {
+                setWhatsAppInlineStatus('Digite um numero valido para gerar o link.', true);
+                if (numberInput) numberInput.focus();
+                if (result) result.classList.add('hidden');
+                return;
+            }
+
+            const encodedMessage = encodeURIComponent(message);
+            const waMeLink = `https://wa.me/${sanitizedNumber}${message ? `?text=${encodedMessage}` : ''}`;
+            const apiLink = `https://api.whatsapp.com/send?phone=${sanitizedNumber}${message ? `&text=${encodedMessage}` : ''}`;
+
+            if (waMeInput) waMeInput.value = waMeLink;
+            if (apiInput) apiInput.value = apiLink;
+            if (result) result.classList.remove('hidden');
+
+            setWhatsAppInlineStatus('Links gerados com sucesso.');
+        }
+
+        async function copyToolOutput(elementId, successMessage) {
+            const input = document.getElementById(elementId);
+            if (!input || !input.value) return;
+
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(input.value);
+                } else {
+                    input.focus();
+                    input.select();
+                    document.execCommand('copy');
+                }
+                setWhatsAppInlineStatus(successMessage || 'Link copiado.');
+            } catch (error) {
+                console.error(error);
+                setWhatsAppInlineStatus('Nao foi possivel copiar automaticamente. Copie manualmente.', true);
+            }
+        }
+
+        function openQrGeneratorModal() {
+            const input = document.getElementById('qr-input');
+            const overlay = document.getElementById('qr-modal-overlay');
+            const canvas = document.getElementById('qr-preview-canvas');
+            const value = input ? input.value.trim() : '';
+
+            if (!value) {
+                setQrInlineStatus('Digite um texto ou link para gerar o QR Code.', true);
+                if (input) input.focus();
+                return;
+            }
+
+            try {
+                if (!window.ResultQRCode || typeof window.ResultQRCode.create !== 'function') {
+                    throw new Error('Motor do QR Code indisponivel no momento.');
+                }
+
+                activeQrCode = window.ResultQRCode.create(value);
+                activeQrValue = value;
+                activeQrSvg = activeQrCode.toSvgString({ scale: 12 });
+                activeQrCode.renderToCanvas(canvas, { scale: 10 });
+
+                setQrInlineStatus('QR Code gerado com sucesso.');
+                if (overlay) {
+                    overlay.classList.remove('hidden');
+                    overlay.setAttribute('aria-hidden', 'false');
+                }
+            } catch (error) {
+                console.error(error);
+                setQrInlineStatus(error.message || 'Nao foi possivel gerar o QR Code.', true);
+            }
+        }
+
+        function closeQrModal() {
+            const overlay = document.getElementById('qr-modal-overlay');
+            if (!overlay) return;
+            overlay.classList.add('hidden');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+
+        function getQrDownloadName() {
+            const baseName = activeQrValue
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/(^-|-$)/g, '')
+                .slice(0, 40);
+
+            return baseName || 'qr-code';
+        }
+
+        function downloadBlobFile(blob, filename) {
+            const fileUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = fileUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(fileUrl);
+        }
+
+        function downloadQrPng() {
+            if (!activeQrCode) return;
+
+            const canvas = document.createElement('canvas');
+            activeQrCode.renderToCanvas(canvas, { scale: 24 });
+
+            canvas.toBlob((blob) => {
+                if (!blob) {
+                    alert('Nao foi possivel exportar o PNG do QR Code.');
+                    return;
+                }
+                downloadBlobFile(blob, `${getQrDownloadName()}.png`);
+            }, 'image/png');
+        }
+
+        function downloadQrSvg() {
+            if (!activeQrSvg) return;
+            const blob = new Blob([activeQrSvg], { type: 'image/svg+xml;charset=utf-8' });
+            downloadBlobFile(blob, `${getQrDownloadName()}.svg`);
         }
 
         function updateSelectedTrendUI() {
