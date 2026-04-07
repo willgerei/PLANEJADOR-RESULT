@@ -4,12 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ResultPubli - Planejador</title>
+    <title><%= pageTitle %></title>
     <link rel="stylesheet" href="/styles.css">
     <link rel="icon" type="image/png" href="/logo-r.png">
 </head>
 
-<body>
+<body data-active-page="<%= activePage %>" data-active-tool="<%= activeToolSlug || '' %>">
     <!-- ── Sidebar ── -->
     <aside class="sidebar">
         <div class="sidebar-logo">
@@ -18,7 +18,7 @@
         <nav>
             <ul>
                 <li>
-                    <a href="#" class="active" onclick="switchTab('dashboard-tab', this)" title="Início">
+                    <a href="/" class="<%= activePage === 'dashboard' ? 'active' : '' %>" title="Início">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                             <polyline points="9 22 9 12 15 12 15 22" />
@@ -27,7 +27,7 @@
                     </a>
                 </li>
                 <li>
-                    <a href="#" onclick="switchTab('orchestration-tab', this)" title="Planejamento">
+                    <a href="/planejamento" class="<%= activePage === 'planejamento' ? 'active' : '' %>" title="Planejamento">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
                             <polyline points="14 2 14 8 20 8" />
@@ -39,7 +39,7 @@
                     </a>
                 </li>
                 <li>
-                    <a href="#" onclick="switchTab('admin-tab', this)" title="Clientes">
+                    <a href="/clientes" class="<%= activePage === 'clientes' ? 'active' : '' %>" title="Clientes">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
                             <circle cx="9" cy="7" r="4" />
@@ -50,7 +50,7 @@
                     </a>
                 </li>
                 <li>
-                    <a href="#" onclick="switchTab('tools-tab', this)" title="Outras ferramentas">
+                    <a href="/ferramentas" class="<%= activePage === 'ferramentas' ? 'active' : '' %>" title="Ferramentas">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="3" y="3" width="6" height="6" rx="1" />
                             <rect x="15" y="3" width="6" height="6" rx="1" />
@@ -61,7 +61,7 @@
                             <path d="M11 15v2" />
                             <path d="M11 7v2" />
                         </svg>
-                        <span class="nav-label">Outras ferramentas</span>
+                        <span class="nav-label">Ferramentas</span>
                     </a>
                 </li>
             </ul>
@@ -101,7 +101,7 @@
             </header>
 
             <!-- ── TAB: DASHBOARD ── -->
-            <section id="dashboard-tab" class="dashboard-container tab-pane active">
+            <section id="dashboard-tab" class="dashboard-container tab-pane <%= activePage === 'dashboard' ? 'active' : '' %>">
                 <div class="gemini-star-wrap" style="margin-bottom: 32px; display: flex; justify-content: center;">
                     <!-- Symmetric Flat Gemini Sparkle -->
                     <svg viewBox="0 0 100 100" class="gemini-symbol">
@@ -123,14 +123,12 @@
                 </div>
 
                 <div class="dashboard-ctas">
-                    <button class="btn-hero btn-hero-primary" onclick="switchTab('orchestration-tab',
-                            document.querySelector('a[title=Planejamento]'))">
-                            Criar Planejamento
-                            </button>
-                            <button class="btn-hero btn-hero-secondary"
-                                onclick="switchTab('admin-tab', document.querySelector('a[title=Clientes]'))">
-                                👤 Cadastrar Cliente
-                            </button>
+                    <a class="btn-hero btn-hero-primary" href="/planejamento">
+                        Criar Planejamento
+                    </a>
+                    <a class="btn-hero btn-hero-secondary" href="/clientes">
+                        👤 Cadastrar Cliente
+                    </a>
                 </div>
 
                 <div class="trends-toolbar">
@@ -209,7 +207,7 @@
             </section>
 
             <!-- ── TAB: PLANEJAMENTO ── -->
-            <section id="orchestration-tab" class="tab-pane">
+            <section id="orchestration-tab" class="tab-pane <%= activePage === 'planejamento' ? 'active' : '' %>">
                 <div class="form-card">
                     <h2 class="form-title">Agente de Conteúdos</h2>
                     <p class="form-subtitle">Crie conteúdos estratégicos baseados em evidência com o método Result.</p>
@@ -274,7 +272,7 @@
             </section>
 
             <!-- ── TAB: CLIENTES ── -->
-            <section id="admin-tab" class="tab-pane">
+            <section id="admin-tab" class="tab-pane <%= activePage === 'clientes' ? 'active' : '' %>">
                 <div class="form-card">
                     <h2 class="form-title">Onboarding de Cliente</h2>
                     <p class="form-subtitle">Configure novos médicos e crie a estrutura do Google Drive.</p>
@@ -336,159 +334,294 @@
                 </div>
             </section>
 
-            <!-- ── TAB: OUTRAS FERRAMENTAS ── -->
-            <section id="tools-tab" class="tab-pane">
+            <!-- ── TAB: FERRAMENTAS ── -->
+            <section id="tools-tab" class="tab-pane <%= activePage === 'ferramentas' ? 'active' : '' %>">
                 <div class="tools-page">
-                    <div class="tools-header">
-                        <span class="tools-kicker">UTILITÁRIOS</span>
-                        <h2>Outras ferramentas</h2>
-                        <p>Um hub para recursos rápidos do time. Já temos QR Code, link de WhatsApp e agora um color picker com alvos móveis.</p>
-                    </div>
-
-                    <div class="tools-grid">
-                        <div class="tool-card qr-tool-card">
-                            <div class="tool-card-icon" aria-hidden="true">
-                                <svg viewBox="0 0 96 96" fill="none">
-                                    <rect x="8" y="8" width="28" height="28" rx="4" fill="#111827" />
-                                    <rect x="16" y="16" width="12" height="12" rx="2" fill="#FFFFFF" />
-                                    <rect x="60" y="8" width="28" height="28" rx="4" fill="#111827" />
-                                    <rect x="68" y="16" width="12" height="12" rx="2" fill="#FFFFFF" />
-                                    <rect x="8" y="60" width="28" height="28" rx="4" fill="#111827" />
-                                    <rect x="16" y="68" width="12" height="12" rx="2" fill="#FFFFFF" />
-                                    <rect x="48" y="48" width="8" height="8" rx="2" fill="#A855F7" />
-                                    <rect x="60" y="48" width="12" height="12" rx="3" fill="#111827" />
-                                    <rect x="76" y="48" width="12" height="28" rx="3" fill="#A855F7" />
-                                    <rect x="48" y="64" width="12" height="24" rx="3" fill="#111827" />
-                                    <rect x="64" y="68" width="8" height="8" rx="2" fill="#FFFFFF" />
-                                </svg>
-                            </div>
-
-                            <div class="tool-card-copy">
-                                <h3>Gerador de QR Code</h3>
-                                <p>Digite um texto ou link, gere o QR na hora e baixe em PNG ou SVG vetorial.</p>
-                            </div>
-
-                            <div class="input-group">
-                                <label class="input-label" for="qr-input">Texto ou link</label>
-                                <textarea id="qr-input" rows="4"
-                                    placeholder="Ex: https://resultpubli.com.br ou qualquer texto que voce queira converter em QR Code."></textarea>
-                            </div>
-
-                            <button class="btn-hero btn-hero-primary qr-generate-btn" type="button"
-                                onclick="openQrGeneratorModal()">
-                                Gerar QR Code
-                            </button>
-                            <div id="qr-inline-status" class="tool-inline-status" aria-live="polite"></div>
+                    <% if (!activeToolSlug) { %>
+                        <div class="tools-header tools-header-directory">
+                            <span class="tools-kicker">UTILITÁRIOS</span>
+                            <h2>Ferramentas</h2>
+                            <p>Abra cada utilitário em uma página própria para trabalhar com mais foco. Aqui ficam apenas os atalhos rápidos do hub.</p>
                         </div>
 
-                        <div class="tool-card whatsapp-tool-card">
-                            <div class="tool-card-icon whatsapp-icon" aria-hidden="true">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
-                                    class="bi bi-whatsapp" viewBox="0 0 16 16">
-                                    <path
-                                        d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232" />
-                                </svg>
-                            </div>
-
-                            <div class="tool-card-copy">
-                                <h3>Gerador de link WhatsApp</h3>
-                                <p>Informe o número e a mensagem padrão para gerar o link pronto em dois formatos.</p>
-                            </div>
-
-                            <div class="input-group">
-                                <label class="input-label" for="whatsapp-number">Número</label>
-                                <input type="text" id="whatsapp-number"
-                                    placeholder="Ex: 5511999998888 ou (11) 99999-8888">
-                            </div>
-
-                            <div class="input-group">
-                                <label class="input-label" for="whatsapp-message">Mensagem padrão</label>
-                                <textarea id="whatsapp-message" rows="4"
-                                    placeholder="Ex: Olá! Vim pelo site e gostaria de falar com vocês."></textarea>
-                            </div>
-
-                            <button class="btn-hero btn-hero-primary qr-generate-btn" type="button"
-                                onclick="generateWhatsAppLinks()">
-                                Gerar link WhatsApp
-                            </button>
-                            <div id="whatsapp-inline-status" class="tool-inline-status" aria-live="polite"></div>
-
-                            <div id="whatsapp-result" class="whatsapp-result hidden">
-                                <div class="whatsapp-result-item">
-                                    <label class="input-label" for="whatsapp-wa-me-link">Link `wa.me`</label>
-                                    <div class="tool-output-row">
-                                        <input type="text" id="whatsapp-wa-me-link" readonly>
-                                        <button class="tool-output-btn" type="button"
-                                            onclick="copyToolOutput('whatsapp-wa-me-link', 'Link wa.me copiado.')">
-                                            Copiar
-                                        </button>
+                        <div class="tools-directory-grid">
+                            <% tools.forEach((tool) => { %>
+                                <a href="/ferramentas/<%= tool.slug %>" class="tool-link-card">
+                                    <div class="tool-card-icon <%= tool.slug === 'gerador-whatsapp' ? 'whatsapp-icon' : tool.slug === 'color-picker' ? 'color-picker-icon' : tool.slug === 'correcao-texto' ? 'text-correction-icon' : '' %>" aria-hidden="true">
+                                        <% if (tool.slug === 'gerador-qr') { %>
+                                            <svg viewBox="0 0 96 96" fill="none">
+                                                <rect x="8" y="8" width="28" height="28" rx="4" fill="#111827" />
+                                                <rect x="16" y="16" width="12" height="12" rx="2" fill="#FFFFFF" />
+                                                <rect x="60" y="8" width="28" height="28" rx="4" fill="#111827" />
+                                                <rect x="68" y="16" width="12" height="12" rx="2" fill="#FFFFFF" />
+                                                <rect x="8" y="60" width="28" height="28" rx="4" fill="#111827" />
+                                                <rect x="16" y="68" width="12" height="12" rx="2" fill="#FFFFFF" />
+                                                <rect x="48" y="48" width="8" height="8" rx="2" fill="#A855F7" />
+                                                <rect x="60" y="48" width="12" height="12" rx="3" fill="#111827" />
+                                                <rect x="76" y="48" width="12" height="28" rx="3" fill="#A855F7" />
+                                                <rect x="48" y="64" width="12" height="24" rx="3" fill="#111827" />
+                                                <rect x="64" y="68" width="8" height="8" rx="2" fill="#FFFFFF" />
+                                            </svg>
+                                        <% } else if (tool.slug === 'gerador-whatsapp') { %>
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+                                                class="bi bi-whatsapp" viewBox="0 0 16 16">
+                                                <path
+                                                    d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232" />
+                                            </svg>
+                                        <% } else { %>
+                                            <svg viewBox="0 0 96 96" fill="none">
+                                                <% if (tool.slug === 'color-picker') { %>
+                                                    <circle cx="30" cy="30" r="18" fill="#EF4444" />
+                                                    <circle cx="66" cy="30" r="18" fill="#F59E0B" />
+                                                    <circle cx="30" cy="66" r="18" fill="#10B981" />
+                                                    <circle cx="66" cy="66" r="18" fill="#3B82F6" />
+                                                    <circle cx="48" cy="48" r="10" fill="#FFFFFF" />
+                                                <% } else { %>
+                                                    <rect x="14" y="16" width="68" height="56" rx="16" fill="#EEF2FF" />
+                                                    <path d="M28 34h40" stroke="#111827" stroke-width="6" stroke-linecap="round" />
+                                                    <path d="M28 48h24" stroke="#6366F1" stroke-width="6" stroke-linecap="round" />
+                                                    <path d="m56 51 8 8 14-18" stroke="#10B981" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+                                                <% } %>
+                                            </svg>
+                                        <% } %>
                                     </div>
-                                </div>
+                                    <span><%= tool.name %></span>
+                                </a>
+                            <% }) %>
+                        </div>
+                    <% } else { %>
+                        <div class="tool-detail-page">
+                            <div class="tools-header tools-detail-header">
+                                <span class="tools-kicker">FERRAMENTA SELECIONADA</span>
+                                <h2><%= activeTool.name %></h2>
+                                <p>Cada utilitário agora roda em uma página dedicada. Isso deixa a navegação mais limpa e dá mais destaque para a ferramenta que está em uso.</p>
+                            </div>
 
-                                <div class="whatsapp-result-item">
-                                    <label class="input-label" for="whatsapp-api-link">Link `api.whatsapp.com`</label>
-                                    <div class="tool-output-row">
-                                        <input type="text" id="whatsapp-api-link" readonly>
-                                        <button class="tool-output-btn" type="button"
-                                            onclick="copyToolOutput('whatsapp-api-link', 'Link api.whatsapp.com copiado.')">
-                                            Copiar
-                                        </button>
+                            <div class="tool-detail-topbar">
+                                <a href="/ferramentas" class="tool-back-link">← Voltar para ferramentas</a>
+                                <div class="tool-switcher">
+                                    <% tools.forEach((tool) => { %>
+                                        <a href="/ferramentas/<%= tool.slug %>" class="tool-switcher-link <%= activeToolSlug === tool.slug ? 'active' : '' %>">
+                                            <%= tool.shortName %>
+                                        </a>
+                                    <% }) %>
+                                </div>
+                            </div>
+
+                            <% if (activeToolSlug === 'gerador-qr') { %>
+                                <article class="tool-card tool-focus-card qr-tool-card">
+                                    <div class="tool-focus-hero">
+                                        <div class="tool-card-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 96 96" fill="none">
+                                                <rect x="8" y="8" width="28" height="28" rx="4" fill="#111827" />
+                                                <rect x="16" y="16" width="12" height="12" rx="2" fill="#FFFFFF" />
+                                                <rect x="60" y="8" width="28" height="28" rx="4" fill="#111827" />
+                                                <rect x="68" y="16" width="12" height="12" rx="2" fill="#FFFFFF" />
+                                                <rect x="8" y="60" width="28" height="28" rx="4" fill="#111827" />
+                                                <rect x="16" y="68" width="12" height="12" rx="2" fill="#FFFFFF" />
+                                                <rect x="48" y="48" width="8" height="8" rx="2" fill="#A855F7" />
+                                                <rect x="60" y="48" width="12" height="12" rx="3" fill="#111827" />
+                                                <rect x="76" y="48" width="12" height="28" rx="3" fill="#A855F7" />
+                                                <rect x="48" y="64" width="12" height="24" rx="3" fill="#111827" />
+                                                <rect x="64" y="68" width="8" height="8" rx="2" fill="#FFFFFF" />
+                                            </svg>
+                                        </div>
+
+                                        <div class="tool-focus-copy">
+                                            <h3>Gerador de QR Code</h3>
+                                            <p>Digite um texto ou link, gere o QR instantaneamente e baixe em PNG ou SVG vetorial para usar em campanhas, materiais impressos e peças digitais.</p>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
+
+                                    <div class="tool-focus-form">
+                                        <div class="input-group">
+                                            <label class="input-label" for="qr-input">Texto ou link</label>
+                                            <textarea id="qr-input" rows="4"
+                                                placeholder="Ex: https://resultpubli.com.br ou qualquer texto que voce queira converter em QR Code."></textarea>
+                                        </div>
+                                    </div>
+
+                                    <div class="tool-focus-actions">
+                                        <button class="btn-pill btn-pill-dark qr-generate-btn" type="button"
+                                            onclick="openQrGeneratorModal()">
+                                            Gerar QR Code
+                                        </button>
+                                        <span class="tool-focus-hint">
+                                            Abra o preview para baixar em PNG ou SVG.
+                                        </span>
+                                    </div>
+
+                                    <div id="qr-inline-status" class="tool-inline-status" aria-live="polite"></div>
+                                </article>
+                            <% } %>
+
+                            <% if (activeToolSlug === 'gerador-whatsapp') { %>
+                                <article class="tool-card tool-focus-card whatsapp-tool-card">
+                                    <div class="tool-focus-hero">
+                                        <div class="tool-card-icon whatsapp-icon" aria-hidden="true">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+                                                class="bi bi-whatsapp" viewBox="0 0 16 16">
+                                                <path
+                                                    d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232" />
+                                            </svg>
+                                        </div>
+
+                                        <div class="tool-focus-copy">
+                                            <h3>Gerador de link WhatsApp</h3>
+                                            <p>Monte links prontos para atendimento, campanhas e bio. Informe o número, defina uma mensagem padrão e copie o formato ideal para cada contexto.</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="tool-focus-form tool-focus-form-split">
+                                        <div class="input-group">
+                                            <label class="input-label" for="whatsapp-number">Número</label>
+                                            <input type="text" id="whatsapp-number"
+                                                placeholder="Ex: 5511999998888 ou (11) 99999-8888">
+                                        </div>
+
+                                        <div class="input-group">
+                                            <label class="input-label" for="whatsapp-message">Mensagem padrão</label>
+                                            <textarea id="whatsapp-message" rows="4"
+                                                placeholder="Ex: Ola! Vim pelo site e gostaria de falar com voces."></textarea>
+                                        </div>
+                                    </div>
+
+                                    <div class="tool-focus-actions">
+                                        <button class="btn-pill btn-pill-dark qr-generate-btn" type="button"
+                                            onclick="generateWhatsAppLinks()">
+                                            Gerar link WhatsApp
+                                        </button>
+                                        <span class="tool-focus-hint">
+                                            Gere os formatos `wa.me` e `api.whatsapp.com`.
+                                        </span>
+                                    </div>
+
+                                    <div id="whatsapp-inline-status" class="tool-inline-status" aria-live="polite"></div>
+
+                                    <div id="whatsapp-result" class="whatsapp-result hidden">
+                                        <div class="whatsapp-result-item">
+                                            <label class="input-label" for="whatsapp-wa-me-link">Link `wa.me`</label>
+                                            <div class="tool-output-row">
+                                                <input type="text" id="whatsapp-wa-me-link" readonly>
+                                                <button class="tool-output-btn" type="button"
+                                                    onclick="copyToolOutput('whatsapp-wa-me-link', 'Link wa.me copiado.')">
+                                                    Copiar
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div class="whatsapp-result-item">
+                                            <label class="input-label" for="whatsapp-api-link">Link `api.whatsapp.com`</label>
+                                            <div class="tool-output-row">
+                                                <input type="text" id="whatsapp-api-link" readonly>
+                                                <button class="tool-output-btn" type="button"
+                                                    onclick="copyToolOutput('whatsapp-api-link', 'Link api.whatsapp.com copiado.')">
+                                                    Copiar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </article>
+                            <% } %>
+
+                            <% if (activeToolSlug === 'color-picker') { %>
+                                <article class="tool-card tool-focus-card color-picker-card">
+                                    <div class="tool-focus-hero">
+                                        <div class="tool-card-icon color-picker-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 96 96" fill="none">
+                                                <circle cx="30" cy="30" r="18" fill="#EF4444" />
+                                                <circle cx="66" cy="30" r="18" fill="#F59E0B" />
+                                                <circle cx="30" cy="66" r="18" fill="#10B981" />
+                                                <circle cx="66" cy="66" r="18" fill="#3B82F6" />
+                                                <circle cx="48" cy="48" r="10" fill="#FFFFFF" />
+                                            </svg>
+                                        </div>
+
+                                        <div class="tool-focus-copy">
+                                            <h3>Color Picker</h3>
+                                            <p>Suba uma imagem e a ferramenta encontra 4 cores presentes nela. Depois, arraste os alvos circulares sobre a imagem para atualizar cada hexadecimal em tempo real.</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="tool-focus-actions">
+                                        <input type="file" id="color-picker-upload" accept="image/*" hidden>
+                                        <button class="btn-pill btn-pill-dark" type="button" onclick="triggerColorPickerUpload()">
+                                            Selecionar imagem
+                                        </button>
+                                        <span class="tool-focus-hint">
+                                            PNG, JPG ou WEBP. Os 4 alvos podem ser reposicionados manualmente.
+                                        </span>
+                                    </div>
+
+                                    <div id="color-picker-status" class="tool-inline-status" aria-live="polite"></div>
+
+                                    <div id="color-picker-empty" class="color-picker-empty" onclick="triggerColorPickerUpload()">
+                                        <div class="color-picker-empty-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                                <polyline points="17 8 12 3 7 8" />
+                                                <line x1="12" y1="3" x2="12" y2="15" />
+                                            </svg>
+                                        </div>
+                                        <strong>Suba uma imagem para extrair a paleta</strong>
+                                        <p>A ferramenta detecta 4 cores e posiciona alvos móveis para você refinar cada amostra.</p>
+                                    </div>
+
+                                    <div id="color-picker-stage" class="color-picker-stage hidden">
+                                        <div id="color-picker-image-shell" class="color-picker-image-shell">
+                                            <img id="color-picker-image" alt="Imagem enviada para extrair cores">
+                                            <div id="color-picker-markers" class="color-picker-markers"></div>
+                                        </div>
+                                    </div>
+
+                                    <div id="color-picker-swatches" class="color-picker-swatches hidden"></div>
+                                    <canvas id="color-picker-canvas" class="hidden"></canvas>
+                                </article>
+                            <% } %>
+
+                            <% if (activeToolSlug === 'correcao-texto') { %>
+                                <article class="tool-card tool-focus-card text-correction-card">
+                                    <div class="tool-focus-hero">
+                                        <div class="tool-card-icon text-correction-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 96 96" fill="none">
+                                                <rect x="14" y="16" width="68" height="56" rx="16" fill="#EEF2FF" />
+                                                <path d="M28 34h40" stroke="#111827" stroke-width="6" stroke-linecap="round" />
+                                                <path d="M28 48h24" stroke="#6366F1" stroke-width="6" stroke-linecap="round" />
+                                                <path d="m56 51 8 8 14-18" stroke="#10B981" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+                                            </svg>
+                                        </div>
+
+                                        <div class="tool-focus-copy">
+                                            <h3>Correção de Texto</h3>
+                                            <p>Cole uma copy em português do Brasil para revisar ortografia, gramática e estilo com apoio do LanguageTool. Você pode aplicar sugestões individuais sem sair da tela.</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="tool-focus-form">
+                                        <div class="input-group">
+                                            <label class="input-label" for="text-correction-input">Texto para revisar</label>
+                                            <textarea id="text-correction-input" rows="10"
+                                                placeholder="Cole aqui a copy, legenda, roteiro ou mensagem que você quer corrigir."></textarea>
+                                        </div>
+                                    </div>
+
+                                    <div class="tool-focus-actions">
+                                        <button class="btn-pill btn-pill-dark" type="button" onclick="runTextCorrection()">
+                                            Corrigir texto
+                                        </button>
+                                        <span class="tool-focus-hint">
+                                            A análise busca inconsistências gramaticais e sugere correções rápidas.
+                                        </span>
+                                    </div>
+
+                                    <div id="text-correction-status" class="tool-inline-status" aria-live="polite"></div>
+
+                                    <div id="text-correction-summary" class="text-correction-summary hidden"></div>
+                                    <div id="text-correction-results" class="text-correction-results hidden"></div>
+                                </article>
+                            <% } %>
                         </div>
-
-                        <div class="tool-card tool-card-wide color-picker-card">
-                            <div class="tool-card-icon color-picker-icon" aria-hidden="true">
-                                <svg viewBox="0 0 96 96" fill="none">
-                                    <circle cx="30" cy="30" r="18" fill="#EF4444" />
-                                    <circle cx="66" cy="30" r="18" fill="#F59E0B" />
-                                    <circle cx="30" cy="66" r="18" fill="#10B981" />
-                                    <circle cx="66" cy="66" r="18" fill="#3B82F6" />
-                                    <circle cx="48" cy="48" r="10" fill="#FFFFFF" />
-                                </svg>
-                            </div>
-
-                            <div class="tool-card-copy">
-                                <h3>Color Picker</h3>
-                                <p>Suba uma imagem e a ferramenta encontra 4 cores presentes nela. Depois, arraste os alvos circulares sobre a imagem para atualizar cada hexadecimal em tempo real.</p>
-                            </div>
-
-                            <div class="color-picker-toolbar">
-                                <input type="file" id="color-picker-upload" accept="image/*" hidden>
-                                <button class="btn-pill btn-pill-dark" type="button" onclick="triggerColorPickerUpload()">
-                                    Selecionar imagem
-                                </button>
-                                <span class="color-picker-toolbar-hint">
-                                    PNG, JPG ou WEBP. Os 4 alvos podem ser reposicionados manualmente.
-                                </span>
-                            </div>
-
-                            <div id="color-picker-status" class="tool-inline-status" aria-live="polite"></div>
-
-                            <div id="color-picker-empty" class="color-picker-empty" onclick="triggerColorPickerUpload()">
-                                <div class="color-picker-empty-icon" aria-hidden="true">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                        <polyline points="17 8 12 3 7 8" />
-                                        <line x1="12" y1="3" x2="12" y2="15" />
-                                    </svg>
-                                </div>
-                                <strong>Suba uma imagem para extrair a paleta</strong>
-                                <p>A ferramenta detecta 4 cores e posiciona alvos móveis para você refinar cada amostra.</p>
-                            </div>
-
-                            <div id="color-picker-stage" class="color-picker-stage hidden">
-                                <div id="color-picker-image-shell" class="color-picker-image-shell">
-                                    <img id="color-picker-image" alt="Imagem enviada para extrair cores">
-                                    <div id="color-picker-markers" class="color-picker-markers"></div>
-                                </div>
-                            </div>
-
-                            <div id="color-picker-swatches" class="color-picker-swatches hidden"></div>
-                            <canvas id="color-picker-canvas" class="hidden"></canvas>
-                        </div>
-                    </div>
+                    <% } %>
                 </div>
             </section>
 
@@ -532,6 +665,7 @@
         let activeQrCode = null;
         let activeQrSvg = '';
         let activeQrValue = '';
+        let lastTextCorrectionMatches = [];
         const COLOR_PICKER_MARKER_COUNT = 4;
         const colorPickerState = {
             objectUrl: '',
@@ -543,36 +677,69 @@
         };
 
         document.addEventListener('DOMContentLoaded', () => {
-            setGreeting();
-            setupTrendControls();
-            loadDoctors();
-            loadTrends();
-            setupProductFeedbackPanel();
-            setupQrTool();
-            setupWhatsAppTool();
-            setupColorPickerTool();
+            const activePage = document.body.dataset.activePage || 'dashboard';
+            const activeTool = document.body.dataset.activeTool || '';
 
-            // Staggered animation trigger
-            setTimeout(() => {
-                document.querySelectorAll('.trend-card').forEach(c => c.classList.add('visible'));
-            }, 100);
+            setGreeting();
+
+            if (activePage === 'dashboard') {
+                setupTrendControls();
+                loadTrends();
+                setupProductFeedbackPanel();
+
+                setTimeout(() => {
+                    document.querySelectorAll('.trend-card').forEach((card) => card.classList.add('visible'));
+                }, 100);
+            }
+
+            if (activePage === 'planejamento') {
+                hydratePlanningPrefill();
+                loadDoctors();
+            }
+
+            if (activePage === 'ferramentas' && activeTool === 'gerador-qr') {
+                setupQrTool();
+            }
+
+            if (activePage === 'ferramentas' && activeTool === 'gerador-whatsapp') {
+                setupWhatsAppTool();
+            }
+
+            if (activePage === 'ferramentas' && activeTool === 'color-picker') {
+                setupColorPickerTool();
+            }
+
+            if (activePage === 'ferramentas' && activeTool === 'correcao-texto') {
+                setupTextCorrectionTool();
+            }
         });
 
         function setGreeting() {
+            const greetingEl = document.getElementById('greeting-main');
+            if (!greetingEl) return;
             const h = new Date().getHours();
             const g = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
-            document.getElementById('greeting-main').innerText = g + ", <%= user.displayName.split(' ')[0] %>";
+            greetingEl.innerText = g + ", <%= user.displayName.split(' ')[0] %>";
         }
 
         async function loadDoctors() {
-            const res = await fetch('/api/doctors');
-            const data = await res.json();
             const select = document.getElementById('doctor-select');
-            select.innerHTML = '<option value="" disabled selected>Selecione um médico...</option>';
-            data.data.forEach(d => {
-                select.innerHTML += `<option value="${d.id}">${d.name}</option>`;
-            });
-            select.disabled = false;
+            if (!select) return;
+
+            try {
+                const res = await fetch('/api/doctors');
+                if (!res.ok) throw new Error('Falha ao carregar medicos');
+                const data = await res.json();
+
+                select.innerHTML = '<option value="" disabled selected>Selecione um médico...</option>';
+                data.data.forEach(d => {
+                    select.innerHTML += `<option value="${d.id}">${d.name}</option>`;
+                });
+                select.disabled = false;
+            } catch (error) {
+                console.error(error);
+                select.innerHTML = '<option value="" disabled selected>Não foi possível carregar os médicos.</option>';
+            }
         }
 
         function normalizeSearchText(text) {
@@ -787,15 +954,6 @@
             }
         }
 
-        function switchTab(id, el) {
-            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
-
-            // Fix sidebar active state visual
-            document.querySelectorAll('.sidebar nav a').forEach(a => a.classList.remove('active'));
-            if (el) el.classList.add('active');
-        }
-
         function setToolInlineStatus(elementId, message, isError = false) {
             const statusEl = document.getElementById(elementId);
             if (!statusEl) return;
@@ -846,6 +1004,10 @@
             setToolInlineStatus('color-picker-status', message, isError);
         }
 
+        function setTextCorrectionStatus(message, isError = false) {
+            setToolInlineStatus('text-correction-status', message, isError);
+        }
+
         function setupWhatsAppTool() {
             const numberInput = document.getElementById('whatsapp-number');
             const messageInput = document.getElementById('whatsapp-message');
@@ -889,6 +1051,153 @@
             document.addEventListener('pointermove', handleColorPickerPointerMove);
             document.addEventListener('pointerup', handleColorPickerPointerUp);
             document.addEventListener('pointercancel', handleColorPickerPointerUp);
+        }
+
+        function setupTextCorrectionTool() {
+            const input = document.getElementById('text-correction-input');
+            if (!input) return;
+
+            input.addEventListener('input', () => {
+                setTextCorrectionStatus('');
+            });
+
+            input.addEventListener('keydown', (event) => {
+                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                    event.preventDefault();
+                    runTextCorrection();
+                }
+            });
+        }
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function renderTextCorrectionSummary(matches) {
+            const summary = document.getElementById('text-correction-summary');
+            if (!summary) return;
+
+            if (!matches.length) {
+                summary.classList.add('hidden');
+                summary.innerHTML = '';
+                return;
+            }
+
+            const categories = new Set(matches.map((match) => match.rule?.category?.name).filter(Boolean));
+            summary.innerHTML = `
+                <strong>${matches.length} ponto(s) encontrado(s)</strong>
+                <span>${categories.size ? `Categorias: ${Array.from(categories).join(', ')}` : 'Revise as sugestões abaixo.'}</span>
+            `;
+            summary.classList.remove('hidden');
+        }
+
+        function renderTextCorrectionResults(matches) {
+            const container = document.getElementById('text-correction-results');
+            if (!container) return;
+
+            if (!matches.length) {
+                container.classList.add('hidden');
+                container.innerHTML = '';
+                return;
+            }
+
+            container.innerHTML = matches.map((match, index) => {
+                const suggestions = Array.isArray(match.replacements) ? match.replacements.slice(0, 4) : [];
+                const excerpt = match.context && typeof match.context.text === 'string'
+                    ? match.context.text
+                    : '';
+                const contextOffset = Number(match.context?.offset || 0);
+                const errorLength = Number(match.length || 0);
+                const markedExcerpt = excerpt
+                    ? `${escapeHtml(excerpt.slice(0, contextOffset))}<mark>${escapeHtml(excerpt.slice(contextOffset, contextOffset + errorLength))}</mark>${escapeHtml(excerpt.slice(contextOffset + errorLength))}`
+                    : escapeHtml(match.message || 'Sugestão encontrada.');
+
+                return `
+                    <article class="text-correction-item">
+                        <div class="text-correction-item-top">
+                            <span class="text-correction-category">${escapeHtml(match.rule?.category?.name || 'Revisão')}</span>
+                            <span class="text-correction-rule">${escapeHtml(match.rule?.id || 'LanguageTool')}</span>
+                        </div>
+                        <p class="text-correction-message">${escapeHtml(match.message || 'Ajuste recomendado.')}</p>
+                        <div class="text-correction-context">${markedExcerpt}</div>
+                        <div class="text-correction-suggestions">
+                            ${suggestions.length
+                                ? suggestions.map((replacement) => `
+                                    <button type="button" class="tool-output-btn text-correction-suggestion"
+                                        onclick="applyTextCorrectionSuggestion(${index}, ${JSON.stringify(replacement.value)})">
+                                        ${escapeHtml(replacement.value)}
+                                    </button>
+                                `).join('')
+                                : '<span class="text-correction-no-suggestion">Sem sugestão automática para este ponto.</span>'
+                            }
+                        </div>
+                    </article>
+                `;
+            }).join('');
+
+            container.classList.remove('hidden');
+        }
+
+        async function runTextCorrection() {
+            const input = document.getElementById('text-correction-input');
+            const text = input ? input.value.trim() : '';
+
+            if (!text) {
+                setTextCorrectionStatus('Cole um texto para iniciar a revisão.', true);
+                if (input) input.focus();
+                return;
+            }
+
+            setTextCorrectionStatus('Analisando texto...');
+
+            try {
+                const response = await fetch('/api/tools/text-correction', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text })
+                });
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Falha ao revisar o texto.');
+
+                const matches = Array.isArray(data.matches) ? data.matches : [];
+                lastTextCorrectionMatches = matches;
+                renderTextCorrectionSummary(matches);
+                renderTextCorrectionResults(matches);
+
+                if (!matches.length) {
+                    setTextCorrectionStatus('Nenhum erro encontrado. Sua copy está redonda.');
+                    return;
+                }
+
+                setTextCorrectionStatus(`${matches.length} sugestão(ões) pronta(s) para revisão.`);
+            } catch (error) {
+                console.error(error);
+                lastTextCorrectionMatches = [];
+                renderTextCorrectionSummary([]);
+                renderTextCorrectionResults([]);
+                setTextCorrectionStatus(error.message || 'Não foi possível revisar o texto.', true);
+            }
+        }
+
+        function applyTextCorrectionSuggestion(matchIndex, replacement) {
+            const input = document.getElementById('text-correction-input');
+            const match = lastTextCorrectionMatches[matchIndex];
+            if (!input || !match) return;
+
+            const currentValue = input.value;
+            const offset = Number(match.offset || 0);
+            const length = Number(match.length || 0);
+            input.value = `${currentValue.slice(0, offset)}${replacement}${currentValue.slice(offset + length)}`;
+            setTextCorrectionStatus('Sugestão aplicada. Atualizando revisão...');
+            runTextCorrection();
         }
 
         function triggerColorPickerUpload() {
@@ -1468,6 +1777,34 @@
             downloadBlobFile(blob, `${getQrDownloadName()}.svg`);
         }
 
+        function hydratePlanningPrefill() {
+            const promptInput = document.getElementById('prompt-input');
+            if (!promptInput) return;
+
+            try {
+                const rawValue = sessionStorage.getItem('resultpubli-planning-prefill');
+                if (!rawValue) return;
+
+                const prefill = JSON.parse(rawValue);
+                sessionStorage.removeItem('resultpubli-planning-prefill');
+
+                if (prefill && prefill.prompt && !promptInput.value.trim()) {
+                    promptInput.value = prefill.prompt;
+                }
+
+                if (prefill && prefill.selectedTrend && prefill.selectedTrend.url) {
+                    selectedTrend = {
+                        title: prefill.selectedTrend.title || prefill.selectedTrend.url,
+                        url: prefill.selectedTrend.url
+                    };
+                    updateSelectedTrendUI();
+                }
+            } catch (error) {
+                console.error(error);
+                sessionStorage.removeItem('resultpubli-planning-prefill');
+            }
+        }
+
         function updateSelectedTrendUI() {
             const wrapper = document.getElementById('selected-trend-context');
             const link = document.getElementById('selected-trend-link');
@@ -1493,10 +1830,18 @@
         function useTrendTheme(trend) {
             const title = trend && trend.title ? trend.title : '';
             const url = trend && trend.url ? trend.url : '';
-            selectedTrend = title && url ? { title, url } : null;
-            document.getElementById('prompt-input').value = `Quero um carrossel detalhado sobre: ${title}`;
-            updateSelectedTrendUI();
-            switchTab('orchestration-tab', document.querySelector('a[title=Planejamento]'));
+            const prompt = `Quero um carrossel detalhado sobre: ${title}`;
+
+            try {
+                sessionStorage.setItem('resultpubli-planning-prefill', JSON.stringify({
+                    prompt,
+                    selectedTrend: title && url ? { title, url } : null
+                }));
+            } catch (error) {
+                console.error(error);
+            }
+
+            window.location.href = '/planejamento';
         }
 
         // Logic placeholder for actual production calls (already implemented in backend)
@@ -1651,8 +1996,9 @@
         }
 
         // File list visual logic
-        document.getElementById('file-upload').addEventListener('change', function () {
+        document.getElementById('file-upload')?.addEventListener('change', function () {
             const list = document.getElementById('file-list');
+            if (!list) return;
             list.innerHTML = '';
             Array.from(this.files).forEach(f => {
                 const li = document.createElement('li');

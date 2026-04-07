@@ -24,6 +24,32 @@ const MAX_TRENDS = 12;
 const app = express();
 const PORT = process.env.PORT || 3000;
 const dbPath = path.join(__dirname, '../database/metadata.db');
+const TOOL_DEFINITIONS = [
+    {
+        slug: 'gerador-qr',
+        name: 'Gerador de QR Code',
+        shortName: 'QR Code',
+        description: 'Digite um texto ou link, gere o QR na hora e baixe em PNG ou SVG vetorial.'
+    },
+    {
+        slug: 'gerador-whatsapp',
+        name: 'Gerador de link WhatsApp',
+        shortName: 'WhatsApp',
+        description: 'Informe o numero e a mensagem padrao para gerar o link pronto em dois formatos.'
+    },
+    {
+        slug: 'color-picker',
+        name: 'Color Picker',
+        shortName: 'Color Picker',
+        description: 'Suba uma imagem e a ferramenta encontra 4 cores presentes nela. Depois, arraste os alvos circulares para atualizar cada hexadecimal em tempo real.'
+    },
+    {
+        slug: 'correcao-texto',
+        name: 'Correção de Texto',
+        shortName: 'Correção',
+        description: 'Revise copies em português com LanguageTool, encontre deslizes gramaticais e aplique sugestões rapidamente.'
+    }
+];
 
 // Connect to SQLite Database
 const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE, (err) => {
@@ -138,16 +164,70 @@ app.get('/logout', (req, res, next) => {
     });
 });
 
-// Serve the Main UI (Protected)
-app.get('/', ensureAuthenticated, (req, res) => {
+function resolveDriveDatabaseUrl() {
     const driveParentId = String(process.env.GOOGLE_DRIVE_PARENT_ID || '').trim();
-    const driveDatabaseUrl = driveParentId
+    return driveParentId
         ? `https://drive.google.com/drive/folders/${driveParentId}`
         : '';
+}
+
+function buildPageTitle(activePage, activeTool) {
+    if (activeTool) return `ResultPubli - ${activeTool.name}`;
+
+    switch (activePage) {
+        case 'planejamento':
+            return 'ResultPubli - Planejamento';
+        case 'clientes':
+            return 'ResultPubli - Clientes';
+        case 'ferramentas':
+            return 'ResultPubli - Ferramentas';
+        default:
+            return 'ResultPubli - Planejador';
+    }
+}
+
+function renderMainPage(req, res, { activePage = 'dashboard', activeToolSlug = null } = {}) {
+    const activeTool = activeToolSlug
+        ? TOOL_DEFINITIONS.find((tool) => tool.slug === activeToolSlug) || null
+        : null;
 
     res.render('index', {
         user: req.user,
-        driveDatabaseUrl
+        driveDatabaseUrl: resolveDriveDatabaseUrl(),
+        activePage,
+        activeToolSlug,
+        activeTool,
+        tools: TOOL_DEFINITIONS,
+        pageTitle: buildPageTitle(activePage, activeTool)
+    });
+}
+
+// Serve the Main UI (Protected)
+app.get('/', ensureAuthenticated, (req, res) => {
+    renderMainPage(req, res, { activePage: 'dashboard' });
+});
+
+app.get('/planejamento', ensureAuthenticated, (req, res) => {
+    renderMainPage(req, res, { activePage: 'planejamento' });
+});
+
+app.get('/clientes', ensureAuthenticated, (req, res) => {
+    renderMainPage(req, res, { activePage: 'clientes' });
+});
+
+app.get('/ferramentas', ensureAuthenticated, (req, res) => {
+    renderMainPage(req, res, { activePage: 'ferramentas' });
+});
+
+app.get('/ferramentas/:toolSlug', ensureAuthenticated, (req, res) => {
+    const requestedTool = TOOL_DEFINITIONS.find((tool) => tool.slug === req.params.toolSlug);
+    if (!requestedTool) {
+        return res.redirect('/ferramentas');
+    }
+
+    renderMainPage(req, res, {
+        activePage: 'ferramentas',
+        activeToolSlug: requestedTool.slug
     });
 });
 
@@ -164,6 +244,37 @@ app.get('/api/doctors', ensureAuthenticated, (req, res) => {
             data: rows
         });
     });
+});
+
+app.post('/api/tools/text-correction', ensureAuthenticated, async (req, res) => {
+    const text = String(req.body.text || '').trim();
+
+    if (!text) {
+        return res.status(400).json({ error: 'Envie um texto para corrigir.' });
+    }
+
+    try {
+        const params = new URLSearchParams({
+            text,
+            language: 'pt-BR'
+        });
+
+        const { data } = await axios.post('https://api.languagetool.org/v2/check', params.toString(), {
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            timeout: 20000
+        });
+
+        res.json({
+            matches: Array.isArray(data.matches) ? data.matches : []
+        });
+    } catch (error) {
+        console.error('[LanguageTool] Falha ao corrigir texto:', error.message);
+        res.status(502).json({
+            error: 'Não foi possível consultar a ferramenta de correção agora. Tente novamente em instantes.'
+        });
+    }
 });
 
 // Tier 2 Orchestration Route

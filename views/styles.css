@@ -465,6 +465,7 @@ body {
     align-items: center;
     justify-content: center;
     gap: 12px;
+    text-decoration: none;
     transition: var(--transition-smooth);
 }
 
@@ -778,6 +779,10 @@ body {
     display: block;
 }
 
+.dashboard-container.tab-pane.active {
+    display: flex;
+}
+
 /* ── Form Styling ── */
 .form-card {
     max-width: 800px;
@@ -880,26 +885,55 @@ textarea:focus {
 
 .tools-page {
     width: 100%;
-    max-width: 960px;
+    max-width: 1120px;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 28px;
+    gap: 32px;
 }
 
-.tools-grid {
+.tools-directory-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 22px;
-    align-items: start;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
 }
 
-.tool-card-wide {
-    grid-column: 1 / -1;
+.tool-link-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 18px;
+    min-height: 220px;
+    padding: 28px;
+    border-radius: 28px;
+    text-decoration: none;
+    color: var(--text-main);
+    background:
+        radial-gradient(circle at top left, rgba(168, 85, 247, 0.14), transparent 38%),
+        linear-gradient(145deg, #FFFFFF 0%, #FAF6FF 100%);
+    border: 1px solid rgba(168, 85, 247, 0.12);
+    box-shadow: var(--shadow-card);
+    transition: var(--transition-smooth);
+}
+
+.tool-link-card:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-float);
+    border-color: rgba(168, 85, 247, 0.22);
+}
+
+.tool-link-card .tool-card-icon {
+    margin-bottom: 0;
+}
+
+.tool-link-card span {
+    font-size: 1.12rem;
+    font-weight: 700;
+    line-height: 1.4;
 }
 
 .tools-header {
-    max-width: 720px;
+    max-width: 760px;
 }
 
 .tools-kicker {
@@ -927,6 +961,69 @@ textarea:focus {
     max-width: 640px;
     color: var(--text-secondary);
     line-height: 1.7;
+}
+
+.tool-detail-page {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.tool-detail-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.tool-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 999px;
+    text-decoration: none;
+    color: var(--text-main);
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    font-size: 0.88rem;
+    font-weight: 700;
+    transition: var(--transition-smooth);
+}
+
+.tool-back-link:hover {
+    background: var(--bg-hover);
+}
+
+.tool-switcher {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.tool-switcher-link {
+    padding: 10px 16px;
+    border-radius: 999px;
+    text-decoration: none;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid var(--border-soft);
+    font-size: 0.84rem;
+    font-weight: 700;
+    transition: var(--transition-smooth);
+}
+
+.tool-switcher-link:hover,
+.tool-switcher-link.active {
+    color: var(--text-main);
+    border-color: rgba(168, 85, 247, 0.22);
+    box-shadow: 0 10px 22px -18px rgba(17, 24, 39, 0.3);
+}
+
+.tool-switcher-link.active {
+    background: rgba(168, 85, 247, 0.1);
 }
 
 .tool-card {
@@ -957,6 +1054,26 @@ textarea:focus {
     pointer-events: none;
 }
 
+.tool-focus-card {
+    padding: 42px;
+    border-radius: 34px;
+}
+
+.tool-focus-card .tool-card-icon {
+    margin-bottom: 0;
+}
+
+.tool-focus-hero {
+    display: flex;
+    align-items: flex-start;
+    gap: 24px;
+    margin-bottom: 18px;
+}
+
+.tool-focus-copy {
+    max-width: 660px;
+}
+
 .tool-card-icon {
     width: 88px;
     height: 88px;
@@ -979,6 +1096,7 @@ textarea:focus {
     max-width: 560px;
 }
 
+.tool-focus-copy h3,
 .tool-card-copy h3 {
     font-size: 1.45rem;
     font-weight: 700;
@@ -986,10 +1104,42 @@ textarea:focus {
     margin-bottom: 10px;
 }
 
+.tool-focus-copy p,
 .tool-card-copy p {
     color: var(--text-secondary);
     line-height: 1.7;
     margin-bottom: 28px;
+}
+
+.tool-focus-copy p {
+    margin-bottom: 0;
+}
+
+.tool-focus-form {
+    width: 100%;
+}
+
+.tool-focus-form-split {
+    display: grid;
+    grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+    gap: 20px;
+}
+
+.tool-focus-form .input-group:last-child {
+    margin-bottom: 0;
+}
+
+.tool-focus-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.tool-focus-hint {
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+    line-height: 1.7;
 }
 
 .qr-tool-card textarea,
@@ -1023,6 +1173,11 @@ textarea:focus {
     color: #25D366;
 }
 
+.text-correction-icon {
+    background: linear-gradient(145deg, #F3F4FF 0%, #FFFFFF 100%);
+    color: #4F46E5;
+}
+
 .whatsapp-result {
     margin-top: 18px;
     padding: 18px;
@@ -1047,6 +1202,118 @@ textarea:focus {
 
 .color-picker-icon {
     background: linear-gradient(145deg, #F7FAFF 0%, #FFFFFF 100%);
+}
+
+.text-correction-card textarea {
+    min-height: 240px;
+    resize: vertical;
+}
+
+.text-correction-summary {
+    margin-top: 10px;
+    padding: 16px 18px;
+    border-radius: 18px;
+    background: rgba(79, 70, 229, 0.08);
+    border: 1px solid rgba(79, 70, 229, 0.12);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    align-items: center;
+}
+
+.text-correction-summary.hidden {
+    display: none;
+}
+
+.text-correction-summary strong {
+    font-size: 0.98rem;
+    color: var(--text-main);
+}
+
+.text-correction-summary span {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.text-correction-results {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 8px;
+}
+
+.text-correction-results.hidden {
+    display: none;
+}
+
+.text-correction-item {
+    padding: 20px;
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(17, 24, 39, 0.06);
+    box-shadow: 0 14px 26px -24px rgba(17, 24, 39, 0.3);
+}
+
+.text-correction-item-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.text-correction-category,
+.text-correction-rule {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.text-correction-category {
+    color: #4338CA;
+}
+
+.text-correction-rule {
+    color: var(--text-muted);
+}
+
+.text-correction-message {
+    color: var(--text-main);
+    font-weight: 600;
+    line-height: 1.6;
+    margin-bottom: 12px;
+}
+
+.text-correction-context {
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    line-height: 1.7;
+    margin-bottom: 14px;
+}
+
+.text-correction-context mark {
+    background: rgba(245, 158, 11, 0.22);
+    color: var(--text-main);
+    padding: 2px 4px;
+    border-radius: 6px;
+}
+
+.text-correction-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.text-correction-suggestion {
+    border-color: rgba(79, 70, 229, 0.14);
+}
+
+.text-correction-no-suggestion {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
 }
 
 .color-picker-toolbar {
@@ -1408,7 +1675,11 @@ textarea:focus {
         grid-template-columns: repeat(2, 1fr);
     }
 
-    .tools-grid {
+    .tools-directory-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .tool-focus-form-split {
         grid-template-columns: 1fr;
     }
 
@@ -1473,8 +1744,44 @@ textarea:focus {
         padding: 24px;
     }
 
+    .tool-link-card {
+        min-height: 0;
+    }
+
     .tools-header h2 {
         font-size: 1.65rem;
+    }
+
+    .tool-detail-topbar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .tool-switcher {
+        width: 100%;
+    }
+
+    .tool-switcher-link {
+        flex: 1 1 auto;
+        text-align: center;
+    }
+
+    .tool-focus-card {
+        padding: 28px;
+    }
+
+    .tool-focus-hero {
+        flex-direction: column;
+    }
+
+    .tool-focus-actions {
+        align-items: stretch;
+    }
+
+    .tool-focus-actions .btn-pill {
+        width: 100%;
+        text-align: center;
+        justify-content: center;
     }
 
     .qr-modal {
@@ -1511,12 +1818,28 @@ textarea:focus {
         width: 100%;
     }
 
+    .text-correction-item {
+        padding: 18px;
+    }
+
+    .text-correction-suggestions {
+        flex-direction: column;
+    }
+
+    .text-correction-suggestion {
+        width: 100%;
+    }
+
     .color-picker-toolbar {
         align-items: stretch;
     }
 
     .color-picker-toolbar .btn-pill {
         width: 100%;
+    }
+
+    .tools-directory-grid {
+        grid-template-columns: 1fr;
     }
 
     .color-picker-empty {
