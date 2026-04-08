@@ -19,11 +19,17 @@
             <h2>Acesso Restrito</h2>
             <p class="login-description">Faça login com sua conta corporativa para acessar a ferramenta.</p>
 
-            <% if (typeof error !=='undefined' && error) { %>
+            <% if (error === 'domain') { %>
                 <div class="error-banner">
                     Acesso permitido apenas para contas @resultpubli.com.br
                 </div>
-                <% } %>
+            <% } %>
+
+            <% if (error === 'server' || error === 'auth') { %>
+                <div class="error-banner">
+                    Nao foi possivel concluir o login agora. Verifique o callback do Google e tente novamente.
+                </div>
+            <% } %>
 
                     <a href="/auth/google" class="btn-google">
                         <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" alt="Google"

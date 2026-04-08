@@ -36,10 +36,10 @@ FROM base
 COPY --from=build /app /app
 
 # Setup sqlite3 on a separate volume
-RUN mkdir -p /data
-VOLUME /data
+RUN mkdir -p /app/database
+VOLUME /app/database
 
 # Start the server by default, this can be overwritten at runtime
 EXPOSE 3000
-ENV DATABASE_URL="file:///data/sqlite.db"
+ENV DATABASE_URL="/app/database/database.sqlite"
 CMD [ "npm", "run", "start" ]

@@ -18,6 +18,7 @@ primary_region = 'gru'
   source = "data_volume"
   destination = "/app/database"
 
-  [env]
-  DATABASE_URL = '/app/database/database.sqlite'
-  APP_URL = 'https://planejador-result-will.fly.dev'
+[env]
+  DATABASE_URL = "/app/database/database.sqlite"
+  APP_URL = "https://planejador-result-will.fly.dev"
+  GOOGLE_CALLBACK_URL = "https://planejador-result-will.fly.dev/auth/google/callback"

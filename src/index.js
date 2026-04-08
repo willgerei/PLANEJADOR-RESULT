@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 const session = require('express-session');
 const passport = require('passport');
@@ -22,13 +23,84 @@ const CACHE_TTL = 30 * 60 * 1000;
 const MAX_TRENDS = 12;
 
 const app = express();
-const dbPath = process.env.DATABASE_URL || path.join(__dirname, '../database/metadata.db');
+const TOOL_DEFINITIONS = [
+    { slug: 'gerador-qr', name: 'Gerador de QR Code', shortName: 'QR Code' },
+    { slug: 'gerador-whatsapp', name: 'Gerador de link WhatsApp', shortName: 'WhatsApp' },
+    { slug: 'color-picker', name: 'Color Picker', shortName: 'Cores' },
+    { slug: 'correcao-texto', name: 'Correcao de Texto', shortName: 'Texto' }
+];
+
+function resolveSqliteDbPath() {
+    const fallbackPath = path.join(__dirname, '../database/metadata.db');
+    const configuredPath = String(process.env.DATABASE_URL || fallbackPath).trim();
+
+    if (!configuredPath) return fallbackPath;
+
+    if (/^file:/i.test(configuredPath)) {
+        try {
+            return decodeURIComponent(new URL(configuredPath).pathname);
+        } catch (error) {
+            console.warn('[SQLite] DATABASE_URL em formato file: invalido. Usando valor bruto.');
+        }
+    }
+
+    return configuredPath;
+}
+
+function ensureDirectoryForFile(filePath) {
+    const targetDirectory = path.dirname(filePath);
+    if (!fs.existsSync(targetDirectory)) {
+        fs.mkdirSync(targetDirectory, { recursive: true });
+    }
+}
+
+function initializeDoctorsTable() {
+    db.run(`
+        CREATE TABLE IF NOT EXISTS doctors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            specialty TEXT,
+            drive_folder_id TEXT NOT NULL,
+            instructions_doc_id TEXT NOT NULL,
+            feedback_doc_id TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `, (err) => {
+        if (err) {
+            console.error("[SQLite] Falha ao garantir a tabela 'doctors':", err.message);
+            return;
+        }
+        console.log("[SQLite] Tabela 'doctors' pronta para uso.");
+    });
+}
+
+function buildGoogleCallbackUrl() {
+    const explicitCallbackUrl = String(process.env.GOOGLE_CALLBACK_URL || '').trim();
+    if (explicitCallbackUrl) return explicitCallbackUrl;
+
+    const appUrl = String(process.env.APP_URL || '').trim();
+    if (appUrl) {
+        return new URL('/auth/google/callback', appUrl).toString();
+    }
+
+    return 'http://localhost:3000/auth/google/callback';
+}
+
+function extractProfileEmail(profile) {
+    return String(profile?.emails?.[0]?.value || profile?._json?.email || '')
+        .trim()
+        .toLowerCase();
+}
+
+const dbPath = resolveSqliteDbPath();
+ensureDirectoryForFile(dbPath);
 
 const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
     if (err) {
         console.error('ERRO AO CONECTAR NO SQLITE:', err.message);
     } else {
         console.log('SQLITE CONECTADO COM SUCESSO EM:', dbPath);
+        initializeDoctorsTable();
     }
 });
 
@@ -52,12 +124,18 @@ function toBase64Url(input) {
 // Setup View Engine
 app.set('views', path.join(__dirname, '../views'));
 app.set('view engine', 'ejs');
+app.set('trust proxy', 1);
 
 // Setup Session
 app.use(session({
     secret: process.env.SESSION_SECRET || 'fallback-secret-for-dev-only-change-me',
     resave: false,
-    saveUninitialized: false
+    saveUninitialized: false,
+    cookie: {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production'
+    }
 }));
 
 // Initialize Passport
@@ -66,20 +144,22 @@ app.use(passport.session());
 
 // Passport Google Strategy mapping to ResultPubli Corporate Restrictions
 passport.use(new GoogleStrategy({
-    clientID: process.env.GOOGLE_CLIENT_ID || 'your-client-id',
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'your-client-secret',
-callbackURL: process.env.GOOGLE_CALLBACK_URL || 'url'
+    clientID: process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    callbackURL: buildGoogleCallbackUrl()
 },
     function (accessToken, refreshToken, profile, cb) {
-        // Hosted Domain Restriction check (Tier 1 compliance) d
-        if (profile._json.hd === 'resultpubli.com.br' || profile.emails[0].value.endsWith('@resultpubli.com.br')) {
-            // Attach token to profile so we can use it for Drive API
+        const email = extractProfileEmail(profile);
+        const hostedDomain = String(profile?._json?.hd || '').trim().toLowerCase();
+
+        if (hostedDomain === 'resultpubli.com.br' || email.endsWith('@resultpubli.com.br')) {
             profile.accessToken = accessToken;
             return cb(null, profile);
-        } else {
-            // Failure: user is not from the authorized domain
-            return cb(new Error("Unauthorized domain. ResultPubli corporate accounts only."), null);
         }
+
+        return cb(null, false, {
+            message: 'Acesso permitido apenas para contas @resultpubli.com.br'
+        });
     }
 ));
 
@@ -106,7 +186,9 @@ function ensureAuthenticated(req, res, next) {
 // Authentication Routes
 app.get('/login', (req, res) => {
     if (req.isAuthenticated()) return res.redirect('/');
-    res.render('login');
+    res.render('login', {
+        error: String(req.query.error || '').trim()
+    });
 });
 
 app.get('/auth/google',
@@ -120,14 +202,33 @@ app.get('/auth/google',
             'https://www.googleapis.com/auth/gmail.send'
         ],
         accessType: 'offline',
-        prompt: 'consent'
+        prompt: 'consent',
+        hd: 'resultpubli.com.br'
     })
 );
 
 app.get('/auth/google/callback',
-    passport.authenticate('google', { failureRedirect: '/login?error=domain' }),
-    function (req, res) {
-        res.redirect('/');
+    (req, res, next) => {
+        passport.authenticate('google', (err, user, info) => {
+            if (err) {
+                console.error('[Auth] Falha no callback do Google:', err.message);
+                return res.redirect('/login?error=server');
+            }
+
+            if (!user) {
+                const reason = info?.message ? 'domain' : 'auth';
+                return res.redirect(`/login?error=${reason}`);
+            }
+
+            req.logIn(user, (loginErr) => {
+                if (loginErr) {
+                    console.error('[Auth] Falha ao salvar sessao do usuario:', loginErr.message);
+                    return next(loginErr);
+                }
+
+                return res.redirect('/');
+            });
+        })(req, res, next);
     }
 );
 
