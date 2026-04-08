@@ -113,6 +113,168 @@ function dbGet(sql, params = []) {
     });
 }
 
+function dbAll(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.all(sql, params, (err, rows) => {
+            if (err) return reject(err);
+            resolve(rows);
+        });
+    });
+}
+
+function dbRun(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.run(sql, params, function onRun(err) {
+            if (err) return reject(err);
+            resolve({ lastID: this.lastID, changes: this.changes });
+        });
+    });
+}
+
+function normalizeDriveFileName(value) {
+    return String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+}
+
+function extractSpecialtyFromInstructions(content) {
+    const text = String(content || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    const match = text.match(/##\s*Area\s+de\s+Atuacao\s*\n+([^\n#]+)/i);
+    return match ? String(match[1]).trim() : '';
+}
+
+function getAuthorizedDrive(accessToken) {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    return google.drive({ version: 'v3', auth });
+}
+
+async function readDriveTextFile(drive, fileId) {
+    try {
+        const response = await drive.files.get(
+            { fileId, alt: 'media' },
+            { responseType: 'text' }
+        );
+        return typeof response.data === 'string' ? response.data : '';
+    } catch (error) {
+        console.warn(`[Drive Sync] Nao foi possivel ler o arquivo ${fileId}: ${error.message}`);
+        return '';
+    }
+}
+
+async function syncDoctorsFromDrive(accessToken) {
+    const parentFolderId = String(process.env.GOOGLE_DRIVE_PARENT_ID || '').trim();
+    if (!parentFolderId) {
+        console.warn('[Drive Sync] GOOGLE_DRIVE_PARENT_ID nao configurado. Sincronizacao ignorada.');
+        return { imported: 0, updated: 0, skipped: 0 };
+    }
+
+    const drive = getAuthorizedDrive(accessToken);
+    const foldersResponse = await drive.files.list({
+        q: `'${parentFolderId}' in parents and trashed = false and mimeType = 'application/vnd.google-apps.folder'`,
+        fields: 'files(id, name)',
+        orderBy: 'name',
+        pageSize: 200,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true
+    });
+
+    const folders = Array.isArray(foldersResponse.data.files) ? foldersResponse.data.files : [];
+    let imported = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    for (const folder of folders) {
+        const folderId = String(folder.id || '').trim();
+        const folderName = String(folder.name || '').trim();
+        if (!folderId || !folderName) {
+            skipped += 1;
+            continue;
+        }
+
+        const filesResponse = await drive.files.list({
+            q: `'${folderId}' in parents and trashed = false`,
+            fields: 'files(id, name, mimeType)',
+            pageSize: 100,
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true
+        });
+
+        const files = Array.isArray(filesResponse.data.files) ? filesResponse.data.files : [];
+        const instructionsFile = files.find((file) => {
+            const normalized = normalizeDriveFileName(file.name);
+            return normalized === 'instrucoes.md';
+        });
+        const feedbackFile = files.find((file) => normalizeDriveFileName(file.name) === 'feedback.md');
+
+        if (!instructionsFile || !feedbackFile) {
+            console.warn(`[Drive Sync] Pasta ignorada por falta de arquivos obrigatorios: ${folderName}`);
+            skipped += 1;
+            continue;
+        }
+
+        const instructionsContent = await readDriveTextFile(drive, instructionsFile.id);
+        const specialty = extractSpecialtyFromInstructions(instructionsContent);
+
+        const existingDoctor = await dbGet(
+            `SELECT id FROM doctors WHERE drive_folder_id = ? OR name = ? LIMIT 1`,
+            [folderId, folderName]
+        );
+
+        if (existingDoctor?.id) {
+            await dbRun(
+                `UPDATE doctors
+                 SET name = ?, specialty = ?, drive_folder_id = ?, instructions_doc_id = ?, feedback_doc_id = ?
+                 WHERE id = ?`,
+                [
+                    folderName,
+                    specialty || null,
+                    folderId,
+                    instructionsFile.id,
+                    feedbackFile.id,
+                    existingDoctor.id
+                ]
+            );
+            updated += 1;
+            continue;
+        }
+
+        await dbRun(
+            `INSERT INTO doctors (name, specialty, drive_folder_id, instructions_doc_id, feedback_doc_id)
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+                folderName,
+                specialty || null,
+                folderId,
+                instructionsFile.id,
+                feedbackFile.id
+            ]
+        );
+        imported += 1;
+    }
+
+    console.log(`[Drive Sync] importados=${imported} atualizados=${updated} ignorados=${skipped}`);
+    return { imported, updated, skipped };
+}
+
+async function ensureDoctorsSeeded(accessToken) {
+    const countRow = await dbGet(`SELECT COUNT(*) AS total FROM doctors`);
+    const total = Number(countRow?.total || 0);
+    if (total > 0) return { seeded: false, total };
+
+    const syncResult = await syncDoctorsFromDrive(accessToken);
+    const refreshedCountRow = await dbGet(`SELECT COUNT(*) AS total FROM doctors`);
+    return {
+        seeded: true,
+        total: Number(refreshedCountRow?.total || 0),
+        ...syncResult
+    };
+}
+
 function toBase64Url(input) {
     return Buffer.from(input)
         .toString('base64')
@@ -308,17 +470,23 @@ app.get('/ferramentas/:toolSlug', ensureAuthenticated, (req, res) => {
 
 // API Routes (Tier 3 Execution)
 // Get all doctors metadata (Protected API)
-app.get('/api/doctors', ensureAuthenticated, (req, res) => {
-    db.all(`SELECT id, name, specialty, drive_folder_id, instructions_doc_id, feedback_doc_id FROM doctors`, [], (err, rows) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
+app.get('/api/doctors', ensureAuthenticated, async (req, res) => {
+    try {
+        await ensureDoctorsSeeded(req.user.accessToken);
+        const rows = await dbAll(
+            `SELECT id, name, specialty, drive_folder_id, instructions_doc_id, feedback_doc_id
+             FROM doctors
+             ORDER BY name COLLATE NOCASE ASC`
+        );
+
         res.json({
             message: "success",
             data: rows
         });
-    });
+    } catch (error) {
+        console.error('[Doctors] Falha ao carregar base de medicos:', error.message);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 app.post('/api/tools/text-correction', ensureAuthenticated, async (req, res) => {
