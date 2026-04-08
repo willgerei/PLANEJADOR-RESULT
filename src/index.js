@@ -22,7 +22,6 @@ const CACHE_TTL = 30 * 60 * 1000;
 const MAX_TRENDS = 12;
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 const dbPath = path.join(__dirname, '../database/metadata.db');
 const TOOL_DEFINITIONS = [
     {
@@ -780,9 +779,9 @@ app.get('/api/trends', ensureAuthenticated, async (req, res) => {
 });
 
 // Starts the Medical Controller Server
-app.listen(PORT, () => {
-    console.log(`ResultPubli Agentic System running on http://localhost:${PORT}`);
-    console.log('Running in Corporate Mode.');
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Servidor rodando na porta ${PORT}`);
 });
 
 // Handle graceful shutdown
