@@ -17,3 +17,7 @@ primary_region = 'gru'
 [mounts]
   source = "data_volume"
   destination = "/app/database"
+
+  [env]
+  DATABASE_URL = '/app/database/database.sqlite'
+  APP_URL = 'https://planejador-result-will.fly.dev'
