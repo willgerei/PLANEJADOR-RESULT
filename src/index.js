@@ -95,7 +95,7 @@ app.use(passport.session());
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID || 'your-client-id',
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'your-client-secret',
-    callbackURL: "http://localhost:3000/auth/google/callback"
+callbackURL: process.env.GOOGLE_CALLBACK_URL || "http://localhost:3000/auth/google/callback"
 },
     function (accessToken, refreshToken, profile, cb) {
         // Hosted Domain Restriction check (Tier 1 compliance)
