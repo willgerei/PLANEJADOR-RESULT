@@ -22,40 +22,13 @@ const CACHE_TTL = 30 * 60 * 1000;
 const MAX_TRENDS = 12;
 
 const app = express();
-const dbPath = path.join(__dirname, '../database/metadata.db');
-const TOOL_DEFINITIONS = [
-    {
-        slug: 'gerador-qr',
-        name: 'Gerador de QR Code',
-        shortName: 'QR Code',
-        description: 'Digite um texto ou link, gere o QR na hora e baixe em PNG ou SVG vetorial.'
-    },
-    {
-        slug: 'gerador-whatsapp',
-        name: 'Gerador de link WhatsApp',
-        shortName: 'WhatsApp',
-        description: 'Informe o numero e a mensagem padrao para gerar o link pronto em dois formatos.'
-    },
-    {
-        slug: 'color-picker',
-        name: 'Color Picker',
-        shortName: 'Color Picker',
-        description: 'Suba uma imagem e a ferramenta encontra 4 cores presentes nela. Depois, arraste os alvos circulares para atualizar cada hexadecimal em tempo real.'
-    },
-    {
-        slug: 'correcao-texto',
-        name: 'Correção de Texto',
-        shortName: 'Correção',
-        description: 'Revise copies em português com LanguageTool, encontre deslizes gramaticais e aplique sugestões rapidamente.'
-    }
-];
+const dbPath = process.env.DATABASE_URL || path.join(__dirname, '../database/metadata.db');
 
-// Connect to SQLite Database
-const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE, (err) => {
+const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
     if (err) {
-        console.error('Could not connect to database', err.message);
+        console.error('ERRO AO CONECTAR NO SQLITE:', err.message);
     } else {
-        console.log('Connected to SQLite metadata indexer.');
+        console.log('SQLITE CONECTADO COM SUCESSO EM:', dbPath);
     }
 });
 
