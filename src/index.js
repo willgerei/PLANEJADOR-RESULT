@@ -118,7 +118,9 @@ app.get('/auth/google',
             'https://www.googleapis.com/auth/drive.readonly',
             'https://www.googleapis.com/auth/drive.file',
             'https://www.googleapis.com/auth/gmail.send'
-        ]
+        ],
+        accessType: 'offline',
+        prompt: 'consent'
     })
 );
 
