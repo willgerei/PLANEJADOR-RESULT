@@ -115,18 +115,8 @@ Hashtags: #[HashtagDoCliente1] #[HashtagDoCliente2] #[HashtagDoTema]`;
             systemInstruction: this.systemPrompt
         });
 
-        // Helper to get authorized clients per request
-        this.getAuthorizedDocs = (token) => {
-            const auth = new google.auth.OAuth2();
-            auth.setCredentials({ access_token: token });
-            return google.docs({ version: 'v1', auth });
-        };
-
-        this.getAuthorizedDrive = (token) => {
-            const auth = new google.auth.OAuth2();
-            auth.setCredentials({ access_token: token });
-            return google.drive({ version: 'v3', auth });
-        };
+        this.getAuthorizedDocs = (auth) => google.docs({ version: 'v1', auth });
+        this.getAuthorizedDrive = (auth) => google.drive({ version: 'v3', auth });
     }
 
     /**
@@ -191,9 +181,9 @@ Hashtags: #[HashtagDoCliente1] #[HashtagDoCliente2] #[HashtagDoTema]`;
     /**
      * Fetches file content regardless of type (Google Doc or Binary/Text file).
      */
-    async _fetchFileContent(fileId, accessToken) {
-        const docsClient = this.getAuthorizedDocs(accessToken);
-        const driveClient = this.getAuthorizedDrive(accessToken);
+    async _fetchFileContent(fileId, auth) {
+        const docsClient = this.getAuthorizedDocs(auth);
+        const driveClient = this.getAuthorizedDrive(auth);
 
         try {
             // Try as Google Doc first
@@ -217,13 +207,13 @@ Hashtags: #[HashtagDoCliente1] #[HashtagDoCliente2] #[HashtagDoTema]`;
     /**
      * Fetches instructions and feedback documents and concatenates them into a single context string.
      */
-    async fetchContext(instructionsDocId, feedbackDocId, accessToken, folderId) {
+    async fetchContext(instructionsDocId, feedbackDocId, auth, folderId) {
         if (!instructionsDocId || !feedbackDocId) {
             throw new Error("Missing Document IDs for context retrieval.");
         }
 
         try {
-            const driveClient = this.getAuthorizedDrive(accessToken);
+            const driveClient = this.getAuthorizedDrive(auth);
             console.log(`Diagnostic: Scanning folder ${folderId} for all files...`);
 
             const listRes = await driveClient.files.list({
@@ -236,8 +226,8 @@ Hashtags: #[HashtagDoCliente1] #[HashtagDoCliente2] #[HashtagDoTema]`;
             console.log(`Fetching contexts for IDs: ${instructionsDocId}, ${feedbackDocId}`);
 
             const [instructionsText, feedbackText] = await Promise.all([
-                this._fetchFileContent(instructionsDocId.trim(), accessToken),
-                this._fetchFileContent(feedbackDocId.trim(), accessToken)
+                this._fetchFileContent(instructionsDocId.trim(), auth),
+                this._fetchFileContent(feedbackDocId.trim(), auth)
             ]);
 
             return `
@@ -355,11 +345,11 @@ Hashtags: #[HashtagDoCliente1] #[HashtagDoCliente2] #[HashtagDoTema]`;
      * Appends new chronologic learning/feedback directly to the top of the Google Docs file.
      */
     // Expects 'headerText' already formatted (includes timestamp and user info)
-    async appendFeedback(feedbackDocId, headerText, accessToken) {
+    async appendFeedback(feedbackDocId, headerText, auth) {
         if (!feedbackDocId) throw new Error("Missing Feedback Document ID.");
 
         try {
-            const drive = this.getAuthorizedDrive(accessToken);
+            const drive = this.getAuthorizedDrive(auth);
 
             // 1) Read existing file content (feedback.md is stored as plain text)
             let existing = '';

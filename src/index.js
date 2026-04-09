@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { google } = require('googleapis');
@@ -29,6 +30,33 @@ const TOOL_DEFINITIONS = [
     { slug: 'color-picker', name: 'Color Picker', shortName: 'Cores' },
     { slug: 'correcao-texto', name: 'Correcao de Texto', shortName: 'Texto' }
 ];
+const SESSION_COOKIE_NAME = 'planejador.sid';
+const GOOGLE_AUTH_SCOPES = [
+    'profile',
+    'email',
+    'https://www.googleapis.com/auth/documents',
+    'https://www.googleapis.com/auth/drive.readonly',
+    'https://www.googleapis.com/auth/drive.file',
+    'https://www.googleapis.com/auth/gmail.send'
+];
+const USER_SELECT_COLUMNS = `
+    id,
+    google_id,
+    email,
+    display_name,
+    avatar_url,
+    refresh_token,
+    created_at,
+    updated_at
+`;
+
+class GoogleReauthRequiredError extends Error {
+    constructor(message, code = 'reauth_required') {
+        super(message);
+        this.name = 'GoogleReauthRequiredError';
+        this.code = code;
+    }
+}
 
 function resolveSqliteDbPath() {
     const fallbackPath = path.join(__dirname, '../database/metadata.db');
@@ -74,6 +102,32 @@ function initializeDoctorsTable() {
     });
 }
 
+function initializeUsersTable() {
+    db.serialize(() => {
+        db.run(`
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                google_id TEXT NOT NULL UNIQUE,
+                email TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                avatar_url TEXT,
+                refresh_token TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `, (err) => {
+            if (err) {
+                console.error("[SQLite] Falha ao garantir a tabela 'users':", err.message);
+                return;
+            }
+            console.log("[SQLite] Tabela 'users' pronta para uso.");
+        });
+
+        db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)`);
+        db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)`);
+    });
+}
+
 function buildGoogleCallbackUrl() {
     const explicitCallbackUrl = String(process.env.GOOGLE_CALLBACK_URL || '').trim();
     if (explicitCallbackUrl) return explicitCallbackUrl;
@@ -92,6 +146,10 @@ function extractProfileEmail(profile) {
         .toLowerCase();
 }
 
+function extractProfileAvatar(profile) {
+    return String(profile?.photos?.[0]?.value || '').trim();
+}
+
 const dbPath = resolveSqliteDbPath();
 ensureDirectoryForFile(dbPath);
 
@@ -101,6 +159,7 @@ const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CR
     } else {
         console.log('SQLITE CONECTADO COM SUCESSO EM:', dbPath);
         initializeDoctorsTable();
+        initializeUsersTable();
     }
 });
 
@@ -131,6 +190,251 @@ function dbRun(sql, params = []) {
     });
 }
 
+function normalizeAppUser(userRow) {
+    return {
+        id: userRow.id,
+        googleId: String(userRow.google_id || '').trim(),
+        email: String(userRow.email || '').trim().toLowerCase(),
+        displayName: String(userRow.display_name || userRow.email || 'Usuário').trim(),
+        avatarUrl: String(userRow.avatar_url || '').trim()
+    };
+}
+
+async function getUserById(userId) {
+    if (!userId) return null;
+    return dbGet(`SELECT ${USER_SELECT_COLUMNS} FROM users WHERE id = ? LIMIT 1`, [userId]);
+}
+
+async function getUserByGoogleIdentity(googleId, email) {
+    return dbGet(
+        `SELECT ${USER_SELECT_COLUMNS}
+         FROM users
+         WHERE google_id = ? OR email = ?
+         LIMIT 1`,
+        [googleId, email]
+    );
+}
+
+async function upsertGoogleUser(profile, refreshToken) {
+    const googleId = String(profile?.id || '').trim();
+    const email = extractProfileEmail(profile);
+    const displayName = String(profile?.displayName || email || 'Usuário').trim();
+    const avatarUrl = extractProfileAvatar(profile);
+
+    if (!googleId || !email) {
+        throw new Error('Perfil do Google sem identificadores obrigatórios.');
+    }
+
+    const existingUser = await getUserByGoogleIdentity(googleId, email);
+    const effectiveRefreshToken = String(refreshToken || existingUser?.refresh_token || '').trim() || null;
+
+    if (existingUser?.id) {
+        await dbRun(
+            `UPDATE users
+             SET google_id = ?, email = ?, display_name = ?, avatar_url = ?, refresh_token = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [googleId, email, displayName, avatarUrl || null, effectiveRefreshToken, existingUser.id]
+        );
+        return getUserById(existingUser.id);
+    }
+
+    const insertResult = await dbRun(
+        `INSERT INTO users (google_id, email, display_name, avatar_url, refresh_token)
+         VALUES (?, ?, ?, ?, ?)`,
+        [googleId, email, displayName, avatarUrl || null, effectiveRefreshToken]
+    );
+
+    return getUserById(insertResult.lastID);
+}
+
+async function clearUserRefreshToken(userId) {
+    if (!userId) return;
+    await dbRun(
+        `UPDATE users
+         SET refresh_token = NULL, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [userId]
+    );
+}
+
+function createGoogleOAuthClient(credentials = {}) {
+    const auth = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID || '',
+        process.env.GOOGLE_CLIENT_SECRET || '',
+        buildGoogleCallbackUrl()
+    );
+    auth.setCredentials(credentials);
+    return auth;
+}
+
+function createDriveClient(auth) {
+    return google.drive({ version: 'v3', auth });
+}
+
+function createGmailClient(auth) {
+    return google.gmail({ version: 'v1', auth });
+}
+
+async function persistRefreshToken(userId, refreshToken) {
+    const normalizedRefreshToken = String(refreshToken || '').trim();
+    if (!userId || !normalizedRefreshToken) return;
+
+    await dbRun(
+        `UPDATE users
+         SET refresh_token = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [normalizedRefreshToken, userId]
+    );
+}
+
+async function getGoogleAuthClientForUser(userId) {
+    const userRow = await getUserById(userId);
+    if (!userRow?.id) {
+        throw new GoogleReauthRequiredError('Usuário não encontrado no banco local.', 'user_not_found');
+    }
+
+    const refreshToken = String(userRow.refresh_token || '').trim();
+    if (!refreshToken) {
+        throw new GoogleReauthRequiredError('Usuário sem refresh token salvo.', 'missing_refresh_token');
+    }
+
+    const auth = createGoogleOAuthClient({ refresh_token: refreshToken });
+    auth.on('tokens', (tokens) => {
+        if (tokens?.refresh_token) {
+            persistRefreshToken(userRow.id, tokens.refresh_token).catch((error) => {
+                console.error('[Auth] Falha ao persistir refresh token rotacionado:', error.message);
+            });
+        }
+    });
+
+    await auth.getAccessToken();
+    return auth;
+}
+
+function getGoogleAuthErrorText(error) {
+    const responseError = error?.response?.data?.error;
+    const responseDescription = error?.response?.data?.error_description;
+    const nestedMessage = typeof responseError === 'object' ? responseError.message : responseError;
+
+    return [
+        error?.code,
+        error?.message,
+        nestedMessage,
+        responseDescription
+    ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+}
+
+function isGoogleReauthError(error) {
+    if (error instanceof GoogleReauthRequiredError) return true;
+
+    const text = getGoogleAuthErrorText(error);
+    return text.includes('invalid_grant')
+        || text.includes('invalid credentials')
+        || text.includes('token has been expired or revoked')
+        || text.includes('reauth');
+}
+
+function shouldClearStoredRefreshToken(error) {
+    if (error instanceof GoogleReauthRequiredError) return true;
+    const text = getGoogleAuthErrorText(error);
+    return text.includes('invalid_grant')
+        || text.includes('invalid credentials')
+        || text.includes('expired or revoked');
+}
+
+function saveSession(req) {
+    return new Promise((resolve, reject) => {
+        req.session.save((error) => {
+            if (error) return reject(error);
+            resolve();
+        });
+    });
+}
+
+function clearGoogleAuthFlowFlags(req) {
+    if (!req.session) return;
+    delete req.session.googleAuthForceConsent;
+    delete req.session.googleAuthRepairAttempted;
+}
+
+function getSessionCookieOptions() {
+    return {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        path: '/'
+    };
+}
+
+function destroySession(req, res) {
+    return new Promise((resolve, reject) => {
+        if (!req.session) {
+            res.clearCookie(SESSION_COOKIE_NAME, getSessionCookieOptions());
+            return resolve();
+        }
+
+        req.session.destroy((error) => {
+            if (error) return reject(error);
+            res.clearCookie(SESSION_COOKIE_NAME, getSessionCookieOptions());
+            resolve();
+        });
+    });
+}
+
+function logoutRequest(req) {
+    return new Promise((resolve, reject) => {
+        req.logout((error) => {
+            if (error) return reject(error);
+            resolve();
+        });
+    });
+}
+
+async function logoutAndDestroySession(req, res) {
+    await logoutRequest(req);
+    await destroySession(req, res);
+}
+
+async function handleGoogleApiAuthFailure(req, res, error) {
+    if (!isGoogleReauthError(error)) return false;
+
+    console.warn('[Auth] Credenciais Google indisponíveis. Forçando novo login:', error.message);
+
+    if (req.user?.id && shouldClearStoredRefreshToken(error)) {
+        try {
+            await clearUserRefreshToken(req.user.id);
+        } catch (dbError) {
+            console.error('[Auth] Falha ao limpar refresh token salvo:', dbError.message);
+        }
+    }
+
+    try {
+        await logoutAndDestroySession(req, res);
+    } catch (logoutError) {
+        console.error('[Auth] Falha ao destruir sessão expirada:', logoutError.message);
+    }
+
+    res.status(401).json({
+        error: 'Sua autorização do Google expirou ou foi revogada. Faça login novamente.',
+        reauth: true,
+        loginUrl: '/login?error=reauth'
+    });
+    return true;
+}
+
+async function getGoogleAuthOrRespond(req, res) {
+    try {
+        return await getGoogleAuthClientForUser(req.user?.id);
+    } catch (error) {
+        const handled = await handleGoogleApiAuthFailure(req, res, error);
+        if (handled) return null;
+        throw error;
+    }
+}
+
 function normalizeDriveFileName(value) {
     return String(value || '')
         .toLowerCase()
@@ -147,12 +451,6 @@ function extractSpecialtyFromInstructions(content) {
     return match ? String(match[1]).trim() : '';
 }
 
-function getAuthorizedDrive(accessToken) {
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: accessToken });
-    return google.drive({ version: 'v3', auth });
-}
-
 async function readDriveTextFile(drive, fileId) {
     try {
         const response = await drive.files.get(
@@ -166,14 +464,14 @@ async function readDriveTextFile(drive, fileId) {
     }
 }
 
-async function syncDoctorsFromDrive(accessToken) {
+async function syncDoctorsFromDrive(auth) {
     const parentFolderId = String(process.env.GOOGLE_DRIVE_PARENT_ID || '').trim();
     if (!parentFolderId) {
         console.warn('[Drive Sync] GOOGLE_DRIVE_PARENT_ID nao configurado. Sincronizacao ignorada.');
         return { imported: 0, updated: 0, skipped: 0 };
     }
 
-    const drive = getAuthorizedDrive(accessToken);
+    const drive = createDriveClient(auth);
     const foldersResponse = await drive.files.list({
         q: `'${parentFolderId}' in parents and trashed = false and mimeType = 'application/vnd.google-apps.folder'`,
         fields: 'files(id, name)',
@@ -261,12 +559,12 @@ async function syncDoctorsFromDrive(accessToken) {
     return { imported, updated, skipped };
 }
 
-async function ensureDoctorsSeeded(accessToken) {
+async function ensureDoctorsSeeded(auth) {
     const countRow = await dbGet(`SELECT COUNT(*) AS total FROM doctors`);
     const total = Number(countRow?.total || 0);
     if (total > 0) return { seeded: false, total };
 
-    const syncResult = await syncDoctorsFromDrive(accessToken);
+    const syncResult = await syncDoctorsFromDrive(auth);
     const refreshedCountRow = await dbGet(`SELECT COUNT(*) AS total FROM doctors`);
     return {
         seeded: true,
@@ -288,49 +586,90 @@ app.set('views', path.join(__dirname, '../views'));
 app.set('view engine', 'ejs');
 app.set('trust proxy', 1);
 
+const sessionStore = new SQLiteStore({
+    db: path.basename(dbPath),
+    dir: path.dirname(dbPath),
+    table: 'sessions',
+    concurrentDB: true
+});
+
 // Setup Session
 app.use(session({
+    store: sessionStore,
+    name: SESSION_COOKIE_NAME,
     secret: process.env.SESSION_SECRET || 'fallback-secret-for-dev-only-change-me',
     resave: false,
     saveUninitialized: false,
-    cookie: {
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production'
-    }
+    unset: 'destroy',
+    cookie: getSessionCookieOptions()
 }));
 
 // Initialize Passport
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Passport Google Strategy mapping to ResultPubli Corporate Restrictions
+function buildGoogleAuthOptions(forceConsent = false) {
+    const options = {
+        scope: GOOGLE_AUTH_SCOPES,
+        accessType: 'offline',
+        includeGrantedScopes: true,
+        hd: 'resultpubli.com.br'
+    };
+
+    if (forceConsent) {
+        options.prompt = 'consent';
+    }
+
+    return options;
+}
+
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID || '',
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-    callbackURL: buildGoogleCallbackUrl()
+    callbackURL: buildGoogleCallbackUrl(),
+    passReqToCallback: true
 },
-    function (accessToken, refreshToken, profile, cb) {
+    async function verifyGoogleUser(req, accessToken, refreshToken, profile, cb) {
         const email = extractProfileEmail(profile);
         const hostedDomain = String(profile?._json?.hd || '').trim().toLowerCase();
+        const forceConsentFlow = Boolean(req.session?.googleAuthForceConsent);
 
-        if (hostedDomain === 'resultpubli.com.br' || email.endsWith('@resultpubli.com.br')) {
-            profile.accessToken = accessToken;
-            return cb(null, profile);
+        if (hostedDomain !== 'resultpubli.com.br' && !email.endsWith('@resultpubli.com.br')) {
+            return cb(null, false, {
+                code: 'domain_restricted',
+                message: 'Acesso permitido apenas para contas @resultpubli.com.br'
+            });
         }
 
-        return cb(null, false, {
-            message: 'Acesso permitido apenas para contas @resultpubli.com.br'
-        });
+        try {
+            const userRecord = await upsertGoogleUser(profile, refreshToken);
+
+            if (!String(userRecord?.refresh_token || '').trim()) {
+                return cb(null, false, {
+                    code: forceConsentFlow ? 'missing_refresh_token_after_consent' : 'missing_refresh_token',
+                    message: 'Não foi possível obter refresh token do Google.'
+                });
+            }
+
+            return cb(null, normalizeAppUser(userRecord));
+        } catch (error) {
+            return cb(error);
+        }
     }
 ));
 
-passport.serializeUser(function (user, cb) {
-    cb(null, user);
+passport.serializeUser(function serializeUser(user, cb) {
+    cb(null, user.id);
 });
 
-passport.deserializeUser(function (obj, cb) {
-    cb(null, obj);
+passport.deserializeUser(async function deserializeUser(userId, cb) {
+    try {
+        const userRow = await getUserById(userId);
+        if (!userRow?.id) return cb(null, false);
+        return cb(null, normalizeAppUser(userRow));
+    } catch (error) {
+        return cb(error);
+    }
 });
 
 app.use(express.static(path.join(__dirname, '../views')));
@@ -348,38 +687,45 @@ function ensureAuthenticated(req, res, next) {
 // Authentication Routes
 app.get('/login', (req, res) => {
     if (req.isAuthenticated()) return res.redirect('/');
+    clearGoogleAuthFlowFlags(req);
     res.render('login', {
         error: String(req.query.error || '').trim()
     });
 });
 
-app.get('/auth/google',
-    passport.authenticate('google', {
-        scope: [
-            'profile',
-            'email',
-            'https://www.googleapis.com/auth/documents',
-            'https://www.googleapis.com/auth/drive.readonly',
-            'https://www.googleapis.com/auth/drive.file',
-            'https://www.googleapis.com/auth/gmail.send'
-        ],
-        accessType: 'offline',
-        prompt: 'consent',
-        hd: 'resultpubli.com.br'
-    })
-);
+app.get('/auth/google', (req, res, next) => {
+    const forceConsent = String(req.query.force_consent || '').trim() === '1';
+    req.session.googleAuthForceConsent = forceConsent;
+
+    saveSession(req)
+        .then(() => passport.authenticate('google', buildGoogleAuthOptions(forceConsent))(req, res, next))
+        .catch(next);
+});
 
 app.get('/auth/google/callback',
     (req, res, next) => {
         passport.authenticate('google', (err, user, info) => {
             if (err) {
+                clearGoogleAuthFlowFlags(req);
                 console.error('[Auth] Falha no callback do Google:', err.message);
                 return res.redirect('/login?error=server');
             }
 
             if (!user) {
-                const reason = info?.message ? 'domain' : 'auth';
-                return res.redirect(`/login?error=${reason}`);
+                if (info?.code === 'missing_refresh_token' && !req.session.googleAuthRepairAttempted) {
+                    req.session.googleAuthRepairAttempted = true;
+                    req.session.googleAuthForceConsent = false;
+
+                    return saveSession(req)
+                        .then(() => res.redirect('/auth/google?force_consent=1'))
+                        .catch(next);
+                }
+
+                clearGoogleAuthFlowFlags(req);
+                const reason = info?.code === 'domain_restricted' ? 'domain' : 'auth';
+                return saveSession(req)
+                    .catch(() => null)
+                    .finally(() => res.redirect(`/login?error=${reason}`));
             }
 
             req.logIn(user, (loginErr) => {
@@ -388,17 +734,23 @@ app.get('/auth/google/callback',
                     return next(loginErr);
                 }
 
-                return res.redirect('/');
+                clearGoogleAuthFlowFlags(req);
+                return saveSession(req)
+                    .then(() => res.redirect('/'))
+                    .catch(next);
             });
         })(req, res, next);
     }
 );
 
-app.get('/logout', (req, res, next) => {
-    req.logout((err) => {
-        if (err) { return next(err); }
+app.get('/logout', async (req, res, next) => {
+    try {
+        clearGoogleAuthFlowFlags(req);
+        await logoutAndDestroySession(req, res);
         res.redirect('/login');
-    });
+    } catch (error) {
+        next(error);
+    }
 });
 
 function resolveDriveDatabaseUrl() {
@@ -472,7 +824,10 @@ app.get('/ferramentas/:toolSlug', ensureAuthenticated, (req, res) => {
 // Get all doctors metadata (Protected API)
 app.get('/api/doctors', ensureAuthenticated, async (req, res) => {
     try {
-        await ensureDoctorsSeeded(req.user.accessToken);
+        const auth = await getGoogleAuthOrRespond(req, res);
+        if (!auth) return;
+
+        await ensureDoctorsSeeded(auth);
         const rows = await dbAll(
             `SELECT id, name, specialty, drive_folder_id, instructions_doc_id, feedback_doc_id
              FROM doctors
@@ -484,6 +839,7 @@ app.get('/api/doctors', ensureAuthenticated, async (req, res) => {
             data: rows
         });
     } catch (error) {
+        if (await handleGoogleApiAuthFailure(req, res, error)) return;
         console.error('[Doctors] Falha ao carregar base de medicos:', error.message);
         res.status(500).json({ error: error.message });
     }
@@ -528,34 +884,48 @@ app.post('/api/orchestrate', ensureAuthenticated, async (req, res) => {
         return res.status(400).json({ error: "Missing doctor ID or prompt." });
     }
 
-    db.get(`SELECT id, drive_folder_id, instructions_doc_id, feedback_doc_id FROM doctors WHERE id = ?`, [doctorId], async (err, row) => {
-        if (err || !row) {
+    try {
+        const auth = await getGoogleAuthOrRespond(req, res);
+        if (!auth) return;
+
+        const row = await dbGet(
+            `SELECT id, drive_folder_id, instructions_doc_id, feedback_doc_id
+             FROM doctors
+             WHERE id = ?`,
+            [doctorId]
+        );
+
+        if (!row) {
             return res.status(500).json({ error: "Failed to locate doctor metadata." });
         }
 
-        try {
-            // Tier 2 execution sequence - Passing User Access Token for Drive authorization
-            const contextStr = await medicalController.fetchContext(row.instructions_doc_id, row.feedback_doc_id, req.user.accessToken, row.drive_folder_id);
-            let trendContext = '';
-            if (trendUrl) {
-                try {
-                    trendContext = await medicalController.fetchTrendArticleContext(trendUrl, trendTitle);
-                } catch (trendError) {
-                    console.warn('[Trends] Falha ao anexar contexto da materia:', trendError.message);
-                }
+        const contextStr = await medicalController.fetchContext(
+            row.instructions_doc_id,
+            row.feedback_doc_id,
+            auth,
+            row.drive_folder_id
+        );
+
+        let trendContext = '';
+        if (trendUrl) {
+            try {
+                trendContext = await medicalController.fetchTrendArticleContext(trendUrl, trendTitle);
+            } catch (trendError) {
+                console.warn('[Trends] Falha ao anexar contexto da materia:', trendError.message);
             }
-            const generatedCopy = await medicalController.generateMedicalCopy(prompt, contextStr, trendContext);
-
-            res.json({
-                message: "Success",
-                doctorContextRetrieved: true,
-                copy: generatedCopy
-            });
-
-        } catch (orchestrationError) {
-            res.status(500).json({ error: orchestrationError.message });
         }
-    });
+
+        const generatedCopy = await medicalController.generateMedicalCopy(prompt, contextStr, trendContext);
+
+        res.json({
+            message: "Success",
+            doctorContextRetrieved: true,
+            copy: generatedCopy
+        });
+    } catch (orchestrationError) {
+        if (await handleGoogleApiAuthFailure(req, res, orchestrationError)) return;
+        res.status(500).json({ error: orchestrationError.message });
+    }
 });
 
 app.post('/api/download-docx', ensureAuthenticated, async (req, res) => {
@@ -613,8 +983,11 @@ app.post('/api/feedback', ensureAuthenticated, async (req, res) => {
     }
 
     try {
+        const auth = await getGoogleAuthOrRespond(req, res);
+        if (!auth) return;
+
         // a) Captura usuário logado via OAuth e formata cabeçalho de log
-        const userName = (req.user && (req.user.displayName || (req.user.name && req.user.name.givenName))) || 'Usuário';
+        const userName = req.user?.displayName || 'Usuário';
         const now = new Date();
         const HH = String(now.getHours()).padStart(2, '0');
         const MM = String(now.getMinutes()).padStart(2, '0');
@@ -630,9 +1003,7 @@ app.post('/api/feedback', ensureAuthenticated, async (req, res) => {
         if (!feedbackDocId) return res.status(500).json({ error: 'Feedback document ID not mapped for this doctor.' });
 
         // c) Lê conteúdo atual do feedback.md no Drive (GET / alt=media)
-        const auth = new google.auth.OAuth2();
-        auth.setCredentials({ access_token: req.user.accessToken });
-        const drive = google.drive({ version: 'v3', auth });
+        const drive = createDriveClient(auth);
 
         const getRes = await drive.files.get(
             { fileId: feedbackDocId, alt: 'media' },
@@ -656,6 +1027,7 @@ app.post('/api/feedback', ensureAuthenticated, async (req, res) => {
         // f) Retorna sucesso
         return res.status(200).json({ message: 'Feedback synchronized with Drive.' });
     } catch (err2) {
+        if (await handleGoogleApiAuthFailure(req, res, err2)) return;
         console.error('Error syncing feedback:', err2.message);
         return res.status(500).json({ error: 'Failed to synchronize feedback: ' + err2.message });
     }
@@ -669,12 +1041,15 @@ app.post('/api/tool-feedback-email', ensureAuthenticated, async (req, res) => {
         return res.status(400).json({ error: 'message is required.' });
     }
 
-    const senderEmail = req.user?.emails?.[0]?.value || req.user?._json?.email;
+    const senderEmail = req.user?.email;
     if (!senderEmail) {
         return res.status(400).json({ error: 'Unable to detect logged user email.' });
     }
 
     try {
+        const auth = await getGoogleAuthOrRespond(req, res);
+        if (!auth) return;
+
         const senderName = req.user?.displayName || senderEmail.split('@')[0];
         const now = new Date();
         const dateLabel = now.toLocaleString('pt-BR');
@@ -693,9 +1068,7 @@ app.post('/api/tool-feedback-email', ensureAuthenticated, async (req, res) => {
             trimmedMessage
         ].join('\r\n');
 
-        const auth = new google.auth.OAuth2();
-        auth.setCredentials({ access_token: req.user.accessToken });
-        const gmail = google.gmail({ version: 'v1', auth });
+        const gmail = createGmailClient(auth);
 
         await gmail.users.messages.send({
             userId: 'me',
@@ -704,6 +1077,7 @@ app.post('/api/tool-feedback-email', ensureAuthenticated, async (req, res) => {
 
         return res.status(200).json({ message: 'Feedback enviado com sucesso.' });
     } catch (err) {
+        if (await handleGoogleApiAuthFailure(req, res, err)) return;
         console.error('[Tool Feedback] Failed to send email:', err.message);
         return res.status(500).json({ error: 'Falha ao enviar feedback por e-mail: ' + err.message });
     }
@@ -717,11 +1091,12 @@ app.post('/api/onboard-doctor', ensureAuthenticated, upload.array('files'), asyn
         return res.status(400).json({ error: 'Nome e especialidade são obrigatórios.' });
     }
 
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: req.user.accessToken });
-    const drive = google.drive({ version: 'v3', auth });
-
     try {
+        const auth = await getGoogleAuthOrRespond(req, res);
+        if (!auth) return;
+
+        const drive = createDriveClient(auth);
+
         // a) Criar pasta no Drive com o nome do médico
         const folderMetadata = {
             name: name,
@@ -792,6 +1167,7 @@ app.post('/api/onboard-doctor', ensureAuthenticated, upload.array('files'), asyn
         );
 
     } catch (err) {
+        if (await handleGoogleApiAuthFailure(req, res, err)) return;
         console.error('[Onboarding] Erro na API do Drive:', err.message);
         res.status(500).json({ error: 'Erro na API do Drive: ' + err.message });
     }

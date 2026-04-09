@@ -31,6 +31,12 @@
                 </div>
             <% } %>
 
+            <% if (error === 'reauth') { %>
+                <div class="error-banner">
+                    Sua autorizacao do Google expirou ou foi revogada. Faca login novamente para continuar.
+                </div>
+            <% } %>
+
                     <a href="/auth/google" class="btn-google">
                         <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" alt="Google"
                             style="width:18px; margin-right:10px;">
