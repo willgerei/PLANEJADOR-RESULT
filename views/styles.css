@@ -1465,6 +1465,24 @@ textarea:focus {
     display: none;
 }
 
+.color-picker-download-actions {
+    margin-top: 18px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.color-picker-download-actions .btn-pill {
+    min-width: 210px;
+    justify-content: center;
+}
+
+.color-picker-download-actions .btn-pill[disabled] {
+    opacity: 0.56;
+    cursor: wait;
+}
+
 .color-swatch-card {
     border-radius: 20px;
     overflow: hidden;
@@ -1693,6 +1711,14 @@ textarea:focus {
     .color-picker-swatches {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .color-picker-download-actions {
+        justify-content: flex-start;
+    }
+
+    .color-picker-download-actions .btn-pill {
+        flex: 1 1 240px;
+    }
 }
 
 @media (max-width: 600px) {
@@ -1870,6 +1896,15 @@ textarea:focus {
 
     .color-picker-swatches {
         grid-template-columns: 1fr;
+    }
+
+    .color-picker-download-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .color-picker-download-actions .btn-pill {
+        width: 100%;
     }
 
     .color-swatch-preview {

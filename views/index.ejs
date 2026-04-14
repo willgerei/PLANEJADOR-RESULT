@@ -575,6 +575,16 @@
                                     </div>
 
                                     <div id="color-picker-swatches" class="color-picker-swatches hidden"></div>
+                                    <div id="color-picker-download-actions" class="color-picker-download-actions hidden">
+                                        <button id="color-picker-download-palette" class="btn-pill" type="button"
+                                            onclick="downloadColorPaletteImage()">
+                                            Baixar paleta
+                                        </button>
+                                        <button id="color-picker-download-complete" class="btn-pill btn-pill-dark" type="button"
+                                            onclick="downloadColorPickerCompositeImage()">
+                                            Baixar imagem completa
+                                        </button>
+                                    </div>
                                     <canvas id="color-picker-canvas" class="hidden"></canvas>
                                 </article>
                             <% } %>
@@ -673,7 +683,9 @@
             pixelWidth: 0,
             pixelHeight: 0,
             markers: [],
-            activeMarkerIndex: null
+            activeMarkerIndex: null,
+            sourceFileName: '',
+            isDownloading: false
         };
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -1213,12 +1225,13 @@
                 return;
             }
 
+            setColorPickerStatus('Processando imagem...');
             const objectUrl = URL.createObjectURL(file);
             const image = new Image();
 
             image.onload = () => {
                 try {
-                    prepareColorPickerImage(image, objectUrl);
+                    prepareColorPickerImage(image, objectUrl, file.name);
                 } catch (error) {
                     console.error(error);
                     URL.revokeObjectURL(objectUrl);
@@ -1234,7 +1247,7 @@
             image.src = objectUrl;
         }
 
-        function prepareColorPickerImage(image, objectUrl) {
+        function prepareColorPickerImage(image, objectUrl, sourceFileName) {
             const canvas = document.getElementById('color-picker-canvas');
             const imageEl = document.getElementById('color-picker-image');
             const emptyState = document.getElementById('color-picker-empty');
@@ -1261,6 +1274,8 @@
             colorPickerState.pixelHeight = height;
             colorPickerState.markers = buildInitialColorMarkers(imageData.data, width, height, COLOR_PICKER_MARKER_COUNT);
             colorPickerState.activeMarkerIndex = null;
+            colorPickerState.sourceFileName = String(sourceFileName || '').trim();
+            colorPickerState.isDownloading = false;
 
             imageEl.onload = () => {
                 renderColorPickerMarkers();
@@ -1571,6 +1586,7 @@
             if (!colorPickerState.markers.length) {
                 swatches.classList.add('hidden');
                 swatches.innerHTML = '';
+                renderColorPickerDownloadActions();
                 return;
             }
 
@@ -1587,6 +1603,327 @@
             `).join('');
 
             swatches.classList.remove('hidden');
+            renderColorPickerDownloadActions();
+        }
+
+        function renderColorPickerDownloadActions() {
+            const actions = document.getElementById('color-picker-download-actions');
+            if (!actions) return;
+
+            const canExport = Boolean(
+                colorPickerState.markers.length
+                && colorPickerState.objectUrl
+                && colorPickerState.pixelWidth
+                && colorPickerState.pixelHeight
+            );
+
+            actions.classList.toggle('hidden', !canExport);
+            Array.from(actions.querySelectorAll('button')).forEach((button) => {
+                button.disabled = !canExport || colorPickerState.isDownloading;
+            });
+        }
+
+        async function downloadColorPaletteImage() {
+            await downloadColorPickerExport({
+                fileSuffix: 'paleta',
+                successMessage: 'Paleta baixada com sucesso.',
+                loadingMessage: 'Gerando PNG da paleta...',
+                render: renderPaletteExportCanvas
+            });
+        }
+
+        async function downloadColorPickerCompositeImage() {
+            await downloadColorPickerExport({
+                fileSuffix: 'paleta-completa',
+                successMessage: 'Imagem completa baixada com sucesso.',
+                loadingMessage: 'Gerando composicao completa...',
+                render: renderCompositeExportCanvas
+            });
+        }
+
+        async function downloadColorPickerExport({ fileSuffix, successMessage, loadingMessage, render }) {
+            if (!colorPickerState.markers.length) {
+                setColorPickerStatus('Carregue uma imagem antes de baixar a exportacao.', true);
+                return;
+            }
+
+            colorPickerState.isDownloading = true;
+            renderColorPickerDownloadActions();
+            setColorPickerStatus(loadingMessage || 'Preparando exportacao...');
+
+            try {
+                const exportCanvas = document.createElement('canvas');
+                render(exportCanvas);
+
+                const blob = await canvasToBlob(exportCanvas);
+                if (!blob) throw new Error('Nao foi possivel gerar o PNG da exportacao.');
+
+                downloadBlobFile(blob, `${getColorPickerDownloadBaseName()}-${fileSuffix}.png`);
+                setColorPickerStatus(successMessage || 'Arquivo baixado com sucesso.');
+            } catch (error) {
+                console.error(error);
+                setColorPickerStatus(error.message || 'Nao foi possivel exportar a imagem.', true);
+            } finally {
+                colorPickerState.isDownloading = false;
+                renderColorPickerDownloadActions();
+            }
+        }
+
+        function renderPaletteExportCanvas(canvas) {
+            const markers = colorPickerState.markers;
+            if (!markers.length) {
+                throw new Error('Nenhuma paleta disponivel para exportar.');
+            }
+
+            canvas.width = 1920;
+            canvas.height = 1080;
+
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('Canvas indisponivel para exportacao.');
+
+            const backgroundGradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            backgroundGradient.addColorStop(0, '#F8F4EE');
+            backgroundGradient.addColorStop(0.58, '#F4F1EC');
+            backgroundGradient.addColorStop(1, '#EEE8DF');
+            ctx.fillStyle = backgroundGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const glowGradient = ctx.createRadialGradient(canvas.width * 0.5, canvas.height * 0.45, 80, canvas.width * 0.5, canvas.height * 0.45, 620);
+            glowGradient.addColorStop(0, 'rgba(255, 255, 255, 0.94)');
+            glowGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = glowGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const cardWidth = 286;
+            const cardHeight = 344;
+            const gap = 28;
+            const totalWidth = (cardWidth * markers.length) + (gap * (markers.length - 1));
+            const startX = Math.round((canvas.width - totalWidth) / 2);
+            const startY = Math.round((canvas.height - cardHeight) / 2);
+
+            markers.forEach((marker, index) => {
+                const x = startX + (index * (cardWidth + gap));
+                drawPaletteExportCard(ctx, {
+                    x,
+                    y: startY,
+                    width: cardWidth,
+                    height: cardHeight,
+                    swatchHeight: 178,
+                    radius: 28,
+                    labelFontSize: 22,
+                    hexFontSize: 28,
+                    labelGap: 42,
+                    hexGap: 98
+                }, marker, index);
+            });
+        }
+
+        function renderCompositeExportCanvas(canvas) {
+            const markers = colorPickerState.markers;
+            const image = getColorPickerSourceImage();
+            if (!markers.length) {
+                throw new Error('Nenhuma paleta disponivel para exportar.');
+            }
+
+            canvas.width = 1080;
+            canvas.height = 1350;
+
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('Canvas indisponivel para exportacao.');
+
+            const pageGradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            pageGradient.addColorStop(0, '#FAF6F0');
+            pageGradient.addColorStop(0.52, '#F5F1EB');
+            pageGradient.addColorStop(1, '#EEE8DF');
+            ctx.fillStyle = pageGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const shell = { x: 52, y: 38, width: 976, height: 870, radius: 42 };
+            drawRoundedRectShadow(ctx, shell.x, shell.y, shell.width, shell.height, shell.radius, 'rgba(178, 166, 148, 0.22)', 46, 18);
+            fillRoundedRect(ctx, shell.x, shell.y, shell.width, shell.height, shell.radius, 'rgba(255, 255, 255, 0.88)');
+
+            const frame = { x: 168, y: 66, width: 744, height: 818, radius: 34 };
+            fillRoundedRect(ctx, frame.x, frame.y, frame.width, frame.height, frame.radius, '#EAE2D8');
+            const drawnImageRect = drawContainedImageInRoundedRect(ctx, image, frame);
+            markers.forEach((marker) => {
+                drawColorPickerExportMarker(ctx, {
+                    x: drawnImageRect.x + (marker.x * drawnImageRect.width),
+                    y: drawnImageRect.y + (marker.y * drawnImageRect.height)
+                });
+            });
+
+            const cardWidth = 236;
+            const cardHeight = 282;
+            const gap = 12;
+            const totalWidth = (cardWidth * markers.length) + (gap * (markers.length - 1));
+            const startX = Math.round((canvas.width - totalWidth) / 2);
+            const startY = 966;
+
+            markers.forEach((marker, index) => {
+                const x = startX + (index * (cardWidth + gap));
+                drawPaletteExportCard(ctx, {
+                    x,
+                    y: startY,
+                    width: cardWidth,
+                    height: cardHeight,
+                    swatchHeight: 156,
+                    radius: 26,
+                    labelFontSize: 17,
+                    hexFontSize: 22,
+                    labelGap: 36,
+                    hexGap: 84
+                }, marker, index);
+            });
+        }
+
+        function drawPaletteExportCard(ctx, layout, marker, index) {
+            drawRoundedRectShadow(ctx, layout.x, layout.y, layout.width, layout.height, layout.radius, 'rgba(48, 35, 18, 0.14)', 34, 18);
+            fillRoundedRect(ctx, layout.x, layout.y, layout.width, layout.height, layout.radius, 'rgba(255, 255, 255, 0.98)');
+
+            ctx.save();
+            traceRoundedRectPath(ctx, layout.x, layout.y, layout.width, layout.height, layout.radius);
+            ctx.clip();
+            ctx.fillStyle = marker.hex;
+            ctx.fillRect(layout.x, layout.y, layout.width, layout.swatchHeight);
+            ctx.restore();
+
+            ctx.fillStyle = '#6E7584';
+            ctx.font = `700 ${layout.labelFontSize}px "Inter", "Segoe UI", sans-serif`;
+            ctx.textBaseline = 'alphabetic';
+            ctx.fillText(`COR ${index + 1}`, layout.x + 22, layout.y + layout.swatchHeight + layout.labelGap);
+
+            ctx.fillStyle = '#1E2533';
+            ctx.font = `700 ${layout.hexFontSize}px "Inter", "Segoe UI", sans-serif`;
+            ctx.fillText(marker.hex, layout.x + 22, layout.y + layout.swatchHeight + layout.hexGap);
+        }
+
+        function drawColorPickerExportMarker(ctx, point) {
+            const outerRadius = 28;
+            const innerRadius = 24;
+
+            ctx.save();
+            ctx.shadowColor = 'rgba(82, 63, 38, 0.18)';
+            ctx.shadowBlur = 18;
+            ctx.shadowOffsetY = 6;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, outerRadius, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+            ctx.fill();
+            ctx.restore();
+
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, innerRadius, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+            ctx.fill();
+
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, outerRadius - 2, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 3.6;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(point.x - 9, point.y);
+            ctx.lineTo(point.x + 9, point.y);
+            ctx.moveTo(point.x, point.y - 9);
+            ctx.lineTo(point.x, point.y + 9);
+            ctx.stroke();
+        }
+
+        function getColorPickerSourceImage() {
+            const image = document.getElementById('color-picker-image');
+            if (!image || !image.complete || !image.naturalWidth || !image.naturalHeight) {
+                throw new Error('A imagem ainda nao terminou de carregar.');
+            }
+            return image;
+        }
+
+        function drawContainedImageInRoundedRect(ctx, image, frame) {
+            const fittedRect = getContainRect(image.naturalWidth, image.naturalHeight, frame.x, frame.y, frame.width, frame.height);
+
+            ctx.save();
+            traceRoundedRectPath(ctx, frame.x, frame.y, frame.width, frame.height, frame.radius);
+            ctx.clip();
+            ctx.drawImage(image, fittedRect.x, fittedRect.y, fittedRect.width, fittedRect.height);
+            ctx.restore();
+
+            return fittedRect;
+        }
+
+        function getContainRect(sourceWidth, sourceHeight, frameX, frameY, frameWidth, frameHeight) {
+            const scale = Math.min(frameWidth / sourceWidth, frameHeight / sourceHeight);
+            const width = sourceWidth * scale;
+            const height = sourceHeight * scale;
+
+            return {
+                x: frameX + ((frameWidth - width) / 2),
+                y: frameY + ((frameHeight - height) / 2),
+                width,
+                height
+            };
+        }
+
+        function traceRoundedRectPath(ctx, x, y, width, height, radius) {
+            const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
+            ctx.beginPath();
+            ctx.moveTo(x + safeRadius, y);
+            ctx.lineTo(x + width - safeRadius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+            ctx.lineTo(x + width, y + height - safeRadius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+            ctx.lineTo(x + safeRadius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+            ctx.lineTo(x, y + safeRadius);
+            ctx.quadraticCurveTo(x, y, x + safeRadius, y);
+            ctx.closePath();
+        }
+
+        function fillRoundedRect(ctx, x, y, width, height, radius, fillStyle) {
+            ctx.save();
+            traceRoundedRectPath(ctx, x, y, width, height, radius);
+            ctx.fillStyle = fillStyle;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawRoundedRectShadow(ctx, x, y, width, height, radius, shadowColor, blur, offsetY) {
+            ctx.save();
+            ctx.shadowColor = shadowColor;
+            ctx.shadowBlur = blur;
+            ctx.shadowOffsetY = offsetY;
+            traceRoundedRectPath(ctx, x, y, width, height, radius);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function canvasToBlob(canvas) {
+            return new Promise((resolve) => {
+                canvas.toBlob((blob) => resolve(blob), 'image/png');
+            });
+        }
+
+        function stripFileExtension(filename) {
+            return String(filename || '').replace(/\.[^.]+$/, '');
+        }
+
+        function sanitizeDownloadBaseName(value, fallback) {
+            const baseName = String(value || '')
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/(^-|-$)/g, '')
+                .slice(0, 48);
+
+            return baseName || fallback;
+        }
+
+        function getColorPickerDownloadBaseName() {
+            return sanitizeDownloadBaseName(stripFileExtension(colorPickerState.sourceFileName), 'paleta-de-cores');
         }
 
         function handleColorPickerPointerDown(event) {
@@ -1744,15 +2081,7 @@
         }
 
         function getQrDownloadName() {
-            const baseName = activeQrValue
-                .toLowerCase()
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '')
-                .replace(/[^a-z0-9]+/g, '-')
-                .replace(/(^-|-$)/g, '')
-                .slice(0, 40);
-
-            return baseName || 'qr-code';
+            return sanitizeDownloadBaseName(activeQrValue, 'qr-code');
         }
 
         function downloadBlobFile(blob, filename) {
