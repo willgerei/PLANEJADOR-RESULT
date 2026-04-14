@@ -1552,12 +1552,16 @@ textarea:focus {
 }
 
 .qr-modal {
-    width: min(520px, 100%);
+    width: min(560px, calc(100vw - 48px));
+    height: min(760px, calc(100vh - 48px));
     background: var(--bg-card);
     border: 1px solid rgba(255, 255, 255, 0.3);
     border-radius: 28px;
     box-shadow: 0 28px 60px -20px rgba(17, 24, 39, 0.35);
     padding: 26px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .qr-modal-header {
@@ -1600,18 +1604,21 @@ textarea:focus {
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 344px;
+    flex: 1;
+    min-height: 0;
     background:
         linear-gradient(180deg, rgba(249, 250, 251, 0.92), rgba(243, 244, 246, 0.95));
     border: 1px solid rgba(17, 24, 39, 0.05);
     border-radius: 22px;
     margin: 24px 0;
     padding: 24px;
+    overflow: hidden;
 }
 
 .qr-preview-canvas {
     display: block;
-    max-width: 100%;
+    width: min(100%, 360px);
+    max-width: 360px;
     height: auto;
     border-radius: 18px;
     background: #FFFFFF;
@@ -1785,6 +1792,8 @@ textarea:focus {
     }
 
     .qr-modal {
+        width: min(100%, calc(100vw - 24px));
+        height: min(680px, calc(100vh - 24px));
         padding: 20px;
     }
 
@@ -1797,8 +1806,12 @@ textarea:focus {
     }
 
     .qr-preview-frame {
-        min-height: 280px;
         padding: 18px;
+    }
+
+    .qr-preview-canvas {
+        width: min(100%, 300px);
+        max-width: 300px;
     }
 
     .qr-modal-actions {

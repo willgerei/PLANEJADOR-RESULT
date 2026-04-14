@@ -1693,6 +1693,16 @@
             }
         }
 
+        function getQrPreviewRenderOptions(qrCode) {
+            const previewBoxSize = window.innerWidth <= 640 ? 300 : 360;
+            const logicalSize = Number(qrCode?.size || 0) + 8;
+            const previewScale = logicalSize > 0
+                ? Math.max(2, Math.floor(previewBoxSize / logicalSize))
+                : 6;
+
+            return { scale: previewScale };
+        }
+
         function openQrGeneratorModal() {
             const input = document.getElementById('qr-input');
             const overlay = document.getElementById('qr-modal-overlay');
@@ -1713,7 +1723,7 @@
                 activeQrCode = window.ResultQRCode.create(value);
                 activeQrValue = value;
                 activeQrSvg = activeQrCode.toSvgString({ scale: 12 });
-                activeQrCode.renderToCanvas(canvas, { scale: 10 });
+                activeQrCode.renderToCanvas(canvas, getQrPreviewRenderOptions(activeQrCode));
 
                 setQrInlineStatus('QR Code gerado com sucesso.');
                 if (overlay) {

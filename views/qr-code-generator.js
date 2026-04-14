@@ -614,8 +614,8 @@
 
         canvas.width = pixelSize;
         canvas.height = pixelSize;
-        canvas.style.width = `${pixelSize}px`;
-        canvas.style.height = `${pixelSize}px`;
+        canvas.style.removeProperty('width');
+        canvas.style.removeProperty('height');
 
         ctx.fillStyle = background;
         ctx.fillRect(0, 0, pixelSize, pixelSize);
