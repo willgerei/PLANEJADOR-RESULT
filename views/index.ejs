@@ -216,15 +216,10 @@
                         <label class="input-label">Customer Success (CS)</label>
                         <select id="cs-select">
                             <option value="" disabled selected>Selecione seu atendimento...</option>
-                            <option>Marcos (Experience)</option>
-                            <option>Gabriele (Experience)</option>
-                            <option>Isabela (Customer Success)</option>
-                            <option>Laysa (Customer Success)</option>
-                            <option>Luís (Customer Success)</option>
-                            <option>Vivian (Customer Success)</option>
-                            <option>Arieli (Liderança)</option>
-                            <option>Suellen (Customer Success)</option>
-                            <option>Carol (Customer Success)</option>
+                            <option>Liderança</option>
+                            <option>Rebeca</option>
+                            <option>Amanda</option>
+                            <option>Andressa</option>
                             <option>Outro</option>
                         </select>
                     </div>
@@ -295,14 +290,10 @@
                     <div class="input-group">
                         <label class="input-label">Atendimento Responsável</label>
                         <select id="ob-cs">
-                            <option>Marcos</option>
-                            <option>Gabriele</option>
-                            <option>Isabela</option>
-                            <option>Laysa</option>
-                            <option>Luís</option>
-                            <option>Vivian</option>
-                            <option>Arieli</option>
-                            <option>Suellen</option>
+                            <option>Liderança</option>
+                            <option>Rebeca</option>
+                            <option>Amanda</option>
+                            <option>Andressa</option>
                             <option>Carol</option>
                         </select>
                     </div>
@@ -2174,7 +2165,7 @@
         function useTrendTheme(trend) {
             const title = trend && trend.title ? trend.title : '';
             const url = trend && trend.url ? trend.url : '';
-            const prompt = `Quero um carrossel detalhado sobre: ${title}`;
+            const prompt = `Crie um carrossel sobre: ${title}`;
 
             try {
                 sessionStorage.setItem('resultpubli-planning-prefill', JSON.stringify({

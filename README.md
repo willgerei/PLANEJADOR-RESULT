@@ -1,6 +1,6 @@
 # Planejador Result - Sistema Agentivo de Gestão Médica
 
-Um sistema inteligente de gestão médica desenvolvido em **Node.js** e **Express**, focado na organização e automação de documentos médicos através da integração com **Google Drive API** e **IA Gemini**.
+Um sistema inteligente de copyriting em **Node.js** e **Express**, focado na criação de conteúdos para redes sociais de forma estratégica **Google Drive API** e **IA Gemini**.
 
 ## 🚀 Funcionalidades
 
