@@ -257,9 +257,13 @@
                     <div id="step-result" class="hidden" style="margin-top:40px;">
                         <div style="background:var(--bg-hover); padding:24px; border-radius:18px; line-height:1.7; white-space:pre-wrap; color:var(--text-main);"
                             id="generated-content"></div>
-                        <div style="display:flex; gap:12px; margin-top:20px;">
+                        <div class="planning-result-actions">
                             <button id="btn-download" class="btn-pill btn-pill-dark"
                                 onclick="downloadGeneratedDocx()">Download .docx</button>
+                            <button id="btn-copy-content" class="btn-pill" style="border:1px solid var(--border-soft)"
+                                onclick="copyGeneratedContent()">Copiar conteúdo</button>
+                            <button id="btn-regenerate" class="btn-pill" style="border:1px solid var(--border-soft)"
+                                onclick="regenerateCopy()">Gerar novamente</button>
                             <button id="btn-new-content" class="btn-pill" style="border:1px solid var(--border-soft)">
                                 Novo conteúdo
                             </button>
@@ -668,6 +672,7 @@
         let currentDoctorId = null;
         let lastGeneratedDoctorId = null;
         let lastGeneratedCopy = '';
+        let lastGenerationRequest = null;
         let selectedTrend = null;
         const TRENDS_TOTAL = 12;
         let currentTrends = [];
@@ -2183,50 +2188,171 @@
             window.location.href = '/planejamento';
         }
 
-        // Logic placeholder for actual production calls (already implemented in backend)
-        async function generateCopy() {
-            const docId = document.getElementById('doctor-select').value;
-            const prompt = document.getElementById('prompt-input').value;
-            if (!docId || !prompt) return alert('Selecione um médico e preencha o prompt.');
+        function normalizeGenerationRequest(request = {}) {
+            return {
+                doctorId: String(request.doctorId || '').trim(),
+                prompt: String(request.prompt || '').trim(),
+                trendUrl: String(request.trendUrl || '').trim(),
+                trendTitle: String(request.trendTitle || '').trim()
+            };
+        }
 
-            document.getElementById('loader').style.display = 'block';
-            document.getElementById('btn-generate').style.display = 'none';
-
-            const res = await fetch('/api/orchestrate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    doctorId: docId,
-                    prompt,
-                    trendUrl: selectedTrend?.url || '',
-                    trendTitle: selectedTrend?.title || ''
-                })
+        function getCurrentGenerationRequest() {
+            return normalizeGenerationRequest({
+                doctorId: document.getElementById('doctor-select')?.value,
+                prompt: document.getElementById('prompt-input')?.value,
+                trendUrl: selectedTrend?.url || '',
+                trendTitle: selectedTrend?.title || ''
             });
-            const data = await res.json();
-            document.getElementById('loader').style.display = 'none';
-            if (data.copy) {
-                lastGeneratedDoctorId = docId;
-                lastGeneratedCopy = data.copy;
-                document.getElementById('generated-content').innerText = data.copy;
-                document.getElementById('step-result').classList.remove('hidden');
-                // hide feedback UI if previously opened
-                const fp = document.getElementById('feedback-panel');
-                if (fp) fp.classList.add('hidden');
-            } else {
-                lastGeneratedCopy = '';
-                alert('Erro na geração.');
-                document.getElementById('btn-generate').style.display = 'block';
+        }
+
+        function getResultActionButtons() {
+            return [
+                document.getElementById('btn-download'),
+                document.getElementById('btn-copy-content'),
+                document.getElementById('btn-regenerate'),
+                document.getElementById('btn-new-content'),
+                document.getElementById('btn-review')
+            ].filter(Boolean);
+        }
+
+        function setPlanningLoadingState(isLoading, message) {
+            const loader = document.getElementById('loader');
+            const generateBtn = document.getElementById('btn-generate');
+            const stepResult = document.getElementById('step-result');
+            if (loader) {
+                loader.innerText = message || 'Sincronizando Drive & Gemini...';
+                loader.style.display = isLoading ? 'block' : 'none';
+            }
+            if (generateBtn) {
+                const hasVisibleResult = stepResult && !stepResult.classList.contains('hidden');
+                generateBtn.style.display = isLoading ? 'none' : (hasVisibleResult ? 'none' : 'block');
+            }
+            getResultActionButtons().forEach((button) => {
+                button.disabled = Boolean(isLoading);
+            });
+        }
+
+        function applyGeneratedCopy(copy, request) {
+            const baseRequest = normalizeGenerationRequest(request);
+            lastGeneratedDoctorId = baseRequest.doctorId;
+            lastGenerationRequest = baseRequest;
+            lastGeneratedCopy = copy;
+            document.getElementById('generated-content').innerText = copy;
+            document.getElementById('step-result').classList.remove('hidden');
+        }
+
+        function showTransientButtonState(button, successLabel, originalLabel, timeout = 1400) {
+            if (!button) return;
+            button.innerText = successLabel;
+            window.setTimeout(() => {
+                button.innerText = originalLabel;
+            }, timeout);
+        }
+
+        async function executeGenerationRequest(request, { loadingMessage = 'Sincronizando Drive & Gemini...' } = {}) {
+            const baseRequest = normalizeGenerationRequest(request);
+            if (!baseRequest.doctorId || !baseRequest.prompt) {
+                throw new Error('Selecione um médico e preencha o prompt.');
+            }
+
+            const payload = {
+                ...baseRequest,
+                previousCopy: String(request?.previousCopy || '').trim()
+            };
+
+            setPlanningLoadingState(true, loadingMessage);
+
+            try {
+                const res = await fetch('/api/orchestrate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok && data && data.reauth && data.loginUrl) {
+                    window.location.href = data.loginUrl;
+                    return null;
+                }
+
+                if (!res.ok || !data.copy) {
+                    throw new Error(data.error || 'Erro na geração.');
+                }
+
+                applyGeneratedCopy(data.copy, baseRequest);
+                return data.copy;
+            } finally {
+                setPlanningLoadingState(false, 'Sincronizando Drive & Gemini...');
+            }
+        }
+
+        async function generateCopy() {
+            try {
+                await executeGenerationRequest(getCurrentGenerationRequest(), {
+                    loadingMessage: 'Sincronizando Drive & Gemini...'
+                });
+            } catch (error) {
+                console.error(error);
+                alert(error.message || 'Erro na geração.');
+            }
+        }
+
+        async function regenerateCopy() {
+            if (!lastGenerationRequest || !lastGeneratedCopy) {
+                return alert('Gere um conteúdo primeiro para criar uma nova variação.');
+            }
+
+            try {
+                await executeGenerationRequest(
+                    { ...lastGenerationRequest, previousCopy: lastGeneratedCopy },
+                    { loadingMessage: 'Gerando novamente com o mesmo tema...' }
+                );
+            } catch (error) {
+                console.error(error);
+                alert(error.message || 'Erro ao gerar novamente.');
+            }
+        }
+
+        async function copyGeneratedContent() {
+            const copyText = (lastGeneratedCopy || document.getElementById('generated-content')?.innerText || '').trim();
+            if (!copyText) return alert('Nenhum conteúdo gerado para copiar.');
+
+            const button = document.getElementById('btn-copy-content');
+            const originalLabel = button ? button.innerText : 'Copiar conteúdo';
+
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(copyText);
+                } else {
+                    const helper = document.createElement('textarea');
+                    helper.value = copyText;
+                    helper.setAttribute('readonly', '');
+                    helper.style.position = 'absolute';
+                    helper.style.left = '-9999px';
+                    document.body.appendChild(helper);
+                    helper.select();
+                    document.execCommand('copy');
+                    helper.remove();
+                }
+
+                showTransientButtonState(button, 'Copiado ✓', originalLabel);
+            } catch (error) {
+                console.error(error);
+                alert('Não foi possível copiar automaticamente. Tente novamente.');
             }
         }
 
         function resetPromptArea() {
             document.getElementById('step-result').classList.add('hidden');
             document.getElementById('btn-generate').style.display = 'block';
+            document.getElementById('loader').innerText = 'Sincronizando Drive & Gemini...';
             document.getElementById('prompt-input').value = '';
             document.getElementById('generated-content').innerText = '';
             clearSelectedTrend();
             lastGeneratedDoctorId = null;
             lastGeneratedCopy = '';
+            lastGenerationRequest = null;
             const promptInput = document.getElementById('prompt-input');
             if (promptInput) promptInput.focus();
         }
@@ -2463,7 +2589,7 @@
     <textarea id="feedback-modal-text" placeholder="Ex: reduzir o tom promocional; focar em benefícios clínicos..."></textarea>
     <div class="feedback-actions">
       <button id="feedback-modal-cancel" class="feedback-btn-cancel" type="button">Cancelar</button>
-      <button id="feedback-modal-send" class="feedback-btn-send" type="button">Enviar feedback</button>
+      <button id="feedback-modal-send" class="feedback-btn-send" type="button">Enviar feedback e gerar novamente</button>
       <div id="feedback-modal-status" class="status">Enviando...</div>
     </div>
   </div>
@@ -2473,16 +2599,41 @@
             document.body.appendChild(wrapper);
         })();
 
+        function resetFeedbackModalState() {
+            const status = document.getElementById('feedback-modal-status');
+            const textarea = document.getElementById('feedback-modal-text');
+            const sendButton = document.getElementById('feedback-modal-send');
+
+            if (status) {
+                status.style.display = 'none';
+                status.innerText = '';
+            }
+            if (textarea) {
+                textarea.disabled = false;
+                textarea.value = '';
+            }
+            if (sendButton) {
+                sendButton.disabled = false;
+            }
+        }
+
         // Client-side modal logic and submit
         function openFeedbackModal() {
             const overlay = document.getElementById('feedback-modal-overlay');
-            if (!overlay) return; overlay.style.display = 'flex'; overlay.setAttribute('aria-hidden', 'false');
-            document.getElementById('feedback-modal-text').focus();
+            const textarea = document.getElementById('feedback-modal-text');
+            if (!overlay || !textarea) return;
+
+            resetFeedbackModalState();
+            overlay.style.display = 'flex';
+            overlay.setAttribute('aria-hidden', 'false');
+            textarea.focus();
         }
         function closeFeedbackModal() {
             const overlay = document.getElementById('feedback-modal-overlay');
-            if (!overlay) return; overlay.style.display = 'none'; overlay.setAttribute('aria-hidden', 'true');
-            const status = document.getElementById('feedback-modal-status'); if (status) { status.style.display = 'none'; status.innerText = ''; }
+            if (!overlay) return;
+            overlay.style.display = 'none';
+            overlay.setAttribute('aria-hidden', 'true');
+            resetFeedbackModalState();
         }
 
         // Intercept 'Revisar' button clicks and open modal
@@ -2532,30 +2683,66 @@
                     e.preventDefault();
                     const statusEl = document.getElementById('feedback-modal-status');
                     const ta = document.getElementById('feedback-modal-text');
-                    const doctorSelect = document.getElementById('doctor-select');
-                    const doctorId = doctorSelect && doctorSelect.value ? doctorSelect.value : null;
+                    const doctorId = lastGenerationRequest?.doctorId || lastGeneratedDoctorId || null;
                     if (!doctorId) return alert('Selecione um médico antes de enviar feedback.');
+                    if (!lastGenerationRequest || !lastGeneratedCopy) {
+                        return alert('Gere um conteúdo antes de enviar feedback com regeneração.');
+                    }
                     const text = ta.value.trim(); if (!text) return alert('Digite o feedback antes de enviar.');
 
-                    if (statusEl) { statusEl.style.display = 'inline-block'; statusEl.innerText = 'Enviando...'; }
+                    if (statusEl) { statusEl.style.display = 'inline-block'; statusEl.innerText = 'Salvando feedback e gerando novamente...'; }
                     btnSend.disabled = true;
+                    ta.disabled = true;
+                    setPlanningLoadingState(true, 'Salvando feedback e gerando novamente...');
 
                     try {
                         const resp = await fetch('/api/feedback', {
                             method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ doctorId, feedbackText: text })
+                            body: JSON.stringify({
+                                doctorId,
+                                feedbackText: text,
+                                regenerateRequest: {
+                                    ...lastGenerationRequest,
+                                    previousCopy: lastGeneratedCopy
+                                }
+                            })
                         });
                         const data = await resp.json();
-                        if (resp.ok) {
-                            if (statusEl) { statusEl.innerText = 'Enviado ✓'; }
-                            setTimeout(() => { ta.value = ''; closeFeedbackModal(); btnSend.disabled = false; }, 700);
+                        if (!resp.ok && data && data.reauth && data.loginUrl) {
+                            if (statusEl) statusEl.innerText = 'Atualizando permissões do Google...';
+                            window.location.href = data.loginUrl;
+                            return;
+                        }
+
+                        if (resp.ok && data.copy) {
+                            applyGeneratedCopy(data.copy, lastGenerationRequest);
+                            if (statusEl) { statusEl.innerText = 'Feedback enviado e nova versão gerada ✓'; }
+                            window.setTimeout(() => {
+                                closeFeedbackModal();
+                            }, 900);
+                            return;
+                        }
+
+                        if (!resp.ok && data && data.feedbackSaved) {
+                            if (statusEl) {
+                                statusEl.innerText = data.error || 'Feedback salvo, mas não foi possível gerar novamente.';
+                            }
+                            window.setTimeout(() => {
+                                closeFeedbackModal();
+                                alert(data.error || 'Feedback salvo, mas não foi possível gerar novamente. Use "Gerar novamente" para tentar de novo.');
+                            }, 1200);
                         } else {
                             const err = data && data.error ? data.error : 'Falha ao enviar';
                             if (statusEl) { statusEl.innerText = err; }
+                            ta.disabled = false;
                             btnSend.disabled = false;
                         }
                     } catch (err) {
-                        if (statusEl) statusEl.innerText = 'Erro de rede'; btnSend.disabled = false;
+                        if (statusEl) statusEl.innerText = 'Erro de rede';
+                        ta.disabled = false;
+                        btnSend.disabled = false;
+                    } finally {
+                        setPlanningLoadingState(false, 'Sincronizando Drive & Gemini...');
                     }
                 });
             }

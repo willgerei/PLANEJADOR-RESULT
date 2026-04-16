@@ -276,6 +276,25 @@ body {
     transform: translateY(-1px);
 }
 
+.planning-result-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.planning-result-actions .btn-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.planning-result-actions .btn-pill[disabled] {
+    opacity: 0.56;
+    cursor: wait;
+}
+
 /* ── Dashboard Layout ── */
 .dashboard-container {
     flex: 1;
@@ -1815,6 +1834,10 @@ textarea:focus {
         width: 100%;
         text-align: center;
         justify-content: center;
+    }
+
+    .planning-result-actions .btn-pill {
+        width: 100%;
     }
 
     .qr-modal {

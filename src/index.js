@@ -35,8 +35,9 @@ const GOOGLE_AUTH_SCOPES = [
     'profile',
     'email',
     'https://www.googleapis.com/auth/documents',
-    'https://www.googleapis.com/auth/drive.readonly',
-    'https://www.googleapis.com/auth/drive.file',
+    // `drive.file` only allows writes to files created/opened by the same OAuth app.
+    // Feedback files can be pre-existing, synced from Drive, or edited by other teammates.
+    'https://www.googleapis.com/auth/drive',
     'https://www.googleapis.com/auth/gmail.send'
 ];
 const USER_SELECT_COLUMNS = `
@@ -345,6 +346,12 @@ function shouldClearStoredRefreshToken(error) {
         || text.includes('expired or revoked');
 }
 
+function isGoogleDriveWriteScopeError(error) {
+    const text = getGoogleAuthErrorText(error);
+    return text.includes('has not granted the app')
+        || text.includes('appnotauthorizedtofile');
+}
+
 function saveSession(req) {
     return new Promise((resolve, reject) => {
         req.session.save((error) => {
@@ -425,6 +432,33 @@ async function handleGoogleApiAuthFailure(req, res, error) {
     return true;
 }
 
+async function handleGoogleDriveWriteScopeFailure(req, res, error) {
+    if (!isGoogleDriveWriteScopeError(error)) return false;
+
+    console.warn('[Auth] Escopo do Drive insuficiente para escrita. Solicitando novo consentimento:', error.message);
+
+    if (req.user?.id) {
+        try {
+            await clearUserRefreshToken(req.user.id);
+        } catch (dbError) {
+            console.error('[Auth] Falha ao limpar refresh token apos erro de escopo do Drive:', dbError.message);
+        }
+    }
+
+    try {
+        await logoutAndDestroySession(req, res);
+    } catch (logoutError) {
+        console.error('[Auth] Falha ao destruir sessao apos erro de escopo do Drive:', logoutError.message);
+    }
+
+    res.status(403).json({
+        error: 'Sua autorização do Google Drive precisa ser atualizada para salvar feedbacks. Faça login novamente e aceite as novas permissões.',
+        reauth: true,
+        loginUrl: '/auth/google?force_consent=1'
+    });
+    return true;
+}
+
 async function getGoogleAuthOrRespond(req, res) {
     try {
         return await getGoogleAuthClientForUser(req.user?.id);
@@ -433,6 +467,105 @@ async function getGoogleAuthOrRespond(req, res) {
         if (handled) return null;
         throw error;
     }
+}
+
+function normalizeGenerationRequest(payload = {}) {
+    return {
+        doctorId: String(payload.doctorId || '').trim(),
+        prompt: String(payload.prompt || '').trim(),
+        trendUrl: String(payload.trendUrl || '').trim(),
+        trendTitle: String(payload.trendTitle || '').trim(),
+        previousCopy: String(payload.previousCopy || '').trim()
+    };
+}
+
+function buildFeedbackHeader(userName, feedbackText) {
+    const now = new Date();
+    const HH = String(now.getHours()).padStart(2, '0');
+    const MM = String(now.getMinutes()).padStart(2, '0');
+    const DD = String(now.getDate()).padStart(2, '0');
+    const MMm = String(now.getMonth() + 1).padStart(2, '0');
+    const YYYY = now.getFullYear();
+
+    return `\n[${userName}] deu feedback as ${HH}:${MM} ${DD}/${MMm}/${YYYY}: ${feedbackText}\n---`;
+}
+
+function buildGenerationPrompt(prompt, previousCopy = '') {
+    const normalizedPrompt = String(prompt || '').trim();
+    const normalizedPreviousCopy = String(previousCopy || '').trim();
+
+    if (!normalizedPreviousCopy) return normalizedPrompt;
+
+    return `${normalizedPrompt}
+
+INSTRUÇÃO INTERNA ADICIONAL:
+- Gere uma NOVA variação sobre o mesmo tema, mantendo o objetivo, o tom e o contexto do cliente.
+- Priorize o feedback mais recente e as diretrizes anexadas no contexto.
+- Não repita literalmente frases, gancho inicial, CTA, sequência narrativa ou estrutura dominante da versão anterior.
+- Traga um ângulo novo, com desenvolvimento, exemplos e progressão diferentes.
+
+VERSÃO ANTERIOR PARA EVITAR REPETIÇÃO LITERAL:
+${normalizedPreviousCopy}`;
+}
+
+async function getDoctorContextMetadata(doctorId) {
+    const row = await dbGet(
+        `SELECT id, drive_folder_id, instructions_doc_id, feedback_doc_id
+         FROM doctors
+         WHERE id = ?`,
+        [doctorId]
+    );
+
+    if (!row) {
+        throw new Error('Failed to locate doctor metadata.');
+    }
+
+    return row;
+}
+
+async function generateCopyFromRequest(requestPayload, auth, doctorRow = null) {
+    const request = normalizeGenerationRequest(requestPayload);
+
+    if (!request.doctorId || !request.prompt) {
+        throw new Error('Missing doctor ID or prompt.');
+    }
+
+    const row = doctorRow || await getDoctorContextMetadata(request.doctorId);
+    const contextStr = await medicalController.fetchContext(
+        row.instructions_doc_id,
+        row.feedback_doc_id,
+        auth,
+        row.drive_folder_id
+    );
+
+    let trendContext = '';
+    if (request.trendUrl) {
+        try {
+            trendContext = await medicalController.fetchTrendArticleContext(request.trendUrl, request.trendTitle);
+        } catch (trendError) {
+            console.warn('[Trends] Falha ao anexar contexto da materia:', trendError.message);
+        }
+    }
+
+    const generatedCopy = await medicalController.generateMedicalCopy(
+        buildGenerationPrompt(request.prompt, request.previousCopy),
+        contextStr,
+        trendContext
+    );
+
+    return {
+        copy: generatedCopy,
+        doctorContextRetrieved: true
+    };
+}
+
+async function persistDoctorFeedback({ doctorId, feedbackText, userName, auth }) {
+    const row = await getDoctorContextMetadata(doctorId);
+    const header = buildFeedbackHeader(userName, feedbackText);
+
+    await medicalController.appendFeedback(row.feedback_doc_id, header, auth);
+
+    return row;
 }
 
 function normalizeDriveFileName(value) {
@@ -878,49 +1011,21 @@ app.post('/api/tools/text-correction', ensureAuthenticated, async (req, res) => 
 
 // Tier 2 Orchestration Route
 app.post('/api/orchestrate', ensureAuthenticated, async (req, res) => {
-    const { doctorId, prompt, trendUrl, trendTitle } = req.body;
+    const request = normalizeGenerationRequest(req.body);
 
-    if (!doctorId || !prompt) {
+    if (!request.doctorId || !request.prompt) {
         return res.status(400).json({ error: "Missing doctor ID or prompt." });
     }
 
     try {
         const auth = await getGoogleAuthOrRespond(req, res);
         if (!auth) return;
-
-        const row = await dbGet(
-            `SELECT id, drive_folder_id, instructions_doc_id, feedback_doc_id
-             FROM doctors
-             WHERE id = ?`,
-            [doctorId]
-        );
-
-        if (!row) {
-            return res.status(500).json({ error: "Failed to locate doctor metadata." });
-        }
-
-        const contextStr = await medicalController.fetchContext(
-            row.instructions_doc_id,
-            row.feedback_doc_id,
-            auth,
-            row.drive_folder_id
-        );
-
-        let trendContext = '';
-        if (trendUrl) {
-            try {
-                trendContext = await medicalController.fetchTrendArticleContext(trendUrl, trendTitle);
-            } catch (trendError) {
-                console.warn('[Trends] Falha ao anexar contexto da materia:', trendError.message);
-            }
-        }
-
-        const generatedCopy = await medicalController.generateMedicalCopy(prompt, contextStr, trendContext);
+        const result = await generateCopyFromRequest(request, auth);
 
         res.json({
             message: "Success",
-            doctorContextRetrieved: true,
-            copy: generatedCopy
+            doctorContextRetrieved: result.doctorContextRetrieved,
+            copy: result.copy
         });
     } catch (orchestrationError) {
         if (await handleGoogleApiAuthFailure(req, res, orchestrationError)) return;
@@ -977,7 +1082,10 @@ app.post('/api/download-docx', ensureAuthenticated, async (req, res) => {
 });
 
 app.post('/api/feedback', ensureAuthenticated, async (req, res) => {
-    const { doctorId, feedbackText } = req.body;
+    const doctorId = String(req.body.doctorId || '').trim();
+    const feedbackText = String(req.body.feedbackText || '').trim();
+    const regenerateRequest = req.body.regenerateRequest || null;
+
     if (!doctorId || !feedbackText) {
         return res.status(400).json({ error: 'doctorId and feedbackText are required.' });
     }
@@ -986,47 +1094,35 @@ app.post('/api/feedback', ensureAuthenticated, async (req, res) => {
         const auth = await getGoogleAuthOrRespond(req, res);
         if (!auth) return;
 
-        // a) Captura usuário logado via OAuth e formata cabeçalho de log
         const userName = req.user?.displayName || 'Usuário';
-        const now = new Date();
-        const HH = String(now.getHours()).padStart(2, '0');
-        const MM = String(now.getMinutes()).padStart(2, '0');
-        const DD = String(now.getDate()).padStart(2, '0');
-        const MMm = String(now.getMonth() + 1).padStart(2, '0');
-        const YYYY = now.getFullYear();
-        const header = `\n[${userName}] deu feedback as ${HH}:${MM} ${DD}/${MMm}/${YYYY}: ${feedbackText}\n---`;
+        const doctorRow = await persistDoctorFeedback({ doctorId, feedbackText, userName, auth });
 
-        // b) Busca o feedback_doc_id exclusivo no SQLite
-        const row = await dbGet(`SELECT feedback_doc_id FROM doctors WHERE id = ?`, [doctorId]);
-        if (!row) return res.status(500).json({ error: "Failed to locate doctor metadata." });
-        const feedbackDocId = row.feedback_doc_id;
-        if (!feedbackDocId) return res.status(500).json({ error: 'Feedback document ID not mapped for this doctor.' });
+        if (!regenerateRequest) {
+            return res.status(200).json({ message: 'Feedback synchronized with Drive.' });
+        }
 
-        // c) Lê conteúdo atual do feedback.md no Drive (GET / alt=media)
-        const drive = createDriveClient(auth);
+        try {
+            const result = await generateCopyFromRequest(
+                { ...regenerateRequest, doctorId },
+                auth,
+                doctorRow
+            );
 
-        const getRes = await drive.files.get(
-            { fileId: feedbackDocId, alt: 'media' },
-            { responseType: 'text' }
-        );
-        const existingContent = typeof getRes.data === 'string' ? getRes.data : '';
+            return res.status(200).json({
+                message: 'Feedback synchronized with Drive.',
+                copy: result.copy
+            });
+        } catch (generationError) {
+            if (await handleGoogleApiAuthFailure(req, res, generationError)) return;
 
-        // d) Concatena o log no topo (ordem cronológica reversa)
-        const updatedContent = `${header}\n${existingContent}`;
-
-        // e) Atualiza o arquivo com PATCH na Drive API v3
-        await drive.files.update({
-            fileId: feedbackDocId,
-            media: {
-                mimeType: 'text/markdown',
-                body: Readable.from(Buffer.from(updatedContent, 'utf-8'))
-            },
-            requestBody: { mimeType: 'text/markdown' }
-        });
-
-        // f) Retorna sucesso
-        return res.status(200).json({ message: 'Feedback synchronized with Drive.' });
+            console.error('Error generating content after feedback sync:', generationError.message);
+            return res.status(500).json({
+                error: 'Feedback salvo, mas falhou ao gerar novamente: ' + generationError.message,
+                feedbackSaved: true
+            });
+        }
     } catch (err2) {
+        if (await handleGoogleDriveWriteScopeFailure(req, res, err2)) return;
         if (await handleGoogleApiAuthFailure(req, res, err2)) return;
         console.error('Error syncing feedback:', err2.message);
         return res.status(500).json({ error: 'Failed to synchronize feedback: ' + err2.message });
