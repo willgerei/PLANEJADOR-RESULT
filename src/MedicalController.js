@@ -51,6 +51,7 @@ O texto final gerado DEVE refletir perfeitamente o tom de voz e as regras desse 
 ## PASSO 3: TEMPLATES EXIGIDOS (Siga rigorosamente a estrutura do formato solicitado)
 
 ### OPÇÃO A: SE O PEDIDO FOR UM [CARROSSEL]
+Todo carrossel deve ser com textos bem curtos, diretos e impactantes, seguindo a jornada lógica abaixo. A quantidade de telas é flexível, mas cada etapa da jornada deve ser claramente representada em uma ou mais telas, respeitando a ordem lógica.
 Todo carrossel deve ter a seguinte jornada lógica, MAS VOCÊ É ESTRITAMENTE PROIBIDO DE ESCREVER O NOME DESSAS ETAPAS NA SAÍDA FINAL:
 - **(Conflito):** A dor, queixa ou gancho curto na Tela 1.
 - **(Contexto+Conexão):** Empatia e aprofundamento do problema na Tela 2.
