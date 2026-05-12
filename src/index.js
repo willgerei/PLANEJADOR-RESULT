@@ -40,6 +40,88 @@ const MEDICAL_CATEGORIES = [
     'Medicina Integrativa',
     'Estética Médica'
 ];
+const CARDIOLOGY_TREND_KEYWORDS = [
+    'ablação',
+    'ablacao',
+    'ablation',
+    'aneurysm',
+    'aneurisma',
+    'angioplasty',
+    'angioplastia',
+    'anticoagul',
+    'aortic',
+    'aortica',
+    'aórtica',
+    'arrhythm',
+    'arritmia',
+    'arterial',
+    'artery',
+    'atrial',
+    'blood pressure',
+    'cardiac',
+    'cardiaco',
+    'cardíaco',
+    'cardiology',
+    'cardiologia',
+    'cardiomyopathy',
+    'cardiovascular',
+    'catheter',
+    'cateter',
+    'cholesterol',
+    'coronary',
+    'coronar',
+    'coração',
+    'ecg',
+    'echo',
+    'echocardi',
+    'eletrofisiologia',
+    'electrophysiology',
+    'embol',
+    'failure',
+    'fluoroscopia',
+    'fluoroscopy',
+    'heart',
+    'heart failure',
+    'hipertens',
+    'hypertension',
+    'infarct',
+    'infarto',
+    'insuficiência cardíaca',
+    'insuficiencia cardiaca',
+    'ischemi',
+    'isquemi',
+    'lipid',
+    'marcapasso',
+    'mitral',
+    'miocard',
+    'myocard',
+    'pacemaker',
+    'pressão arterial',
+    'pressao arterial',
+    'stent',
+    'stroke',
+    'thrombo',
+    'transcatheter',
+    'vascular',
+    'valve',
+    'valva',
+    'válvula',
+    'ventricular'
+];
+const TREND_EXCLUDED_TITLE_PATTERNS = [
+    /\babout\b/i,
+    /\bauthor\b/i,
+    /\bcontact\b/i,
+    /\bdiretrizes?\s+de\s+publica[cç][aã]o\b/i,
+    /\beditorial\s+board\b/i,
+    /\bfor\s+authors\b/i,
+    /\binstructions?\s+for\s+authors?\b/i,
+    /\bprivacy\b/i,
+    /\bpublication\s+guidelines?\b/i,
+    /\bsubmit\b/i,
+    /\bsubmission\b/i,
+    /\bterms\b/i
+];
 const medicalContextCache = new Map();
 const conversationContextCache = new Map();
 let doctorsContentNotesColumnPromise = null;
@@ -131,6 +213,33 @@ function normalizeMedicalCategory(value) {
     if (!normalizedValue || normalizedValue === 'todas' || normalizedValue === 'todos') return '';
 
     return MEDICAL_CATEGORIES.find((category) => normalizeComparableText(category) === normalizedValue) || '';
+}
+
+function trendContainsAnyKeyword(title, keywords = []) {
+    const normalizedTitle = normalizeComparableText(title);
+    return keywords.some((keyword) => normalizedTitle.includes(normalizeComparableText(keyword)));
+}
+
+function isExcludedTrendTitle(title) {
+    return TREND_EXCLUDED_TITLE_PATTERNS.some((pattern) => pattern.test(String(title || '')));
+}
+
+function isLikelyPersonNameOnly(title) {
+    const words = String(title || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .split(' ')
+        .filter(Boolean);
+
+    if (words.length < 2 || words.length > 5) return false;
+    return words.every((word) => /^[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][a-záàâãéêíóôõúç.'-]+$/.test(word));
+}
+
+function isTrendAllowedForSource(source, title) {
+    if (!title || isExcludedTrendTitle(title)) return false;
+    if (source.requiredKeywords?.length && !trendContainsAnyKeyword(title, source.requiredKeywords)) return false;
+    if (source.rejectPersonNameOnly && isLikelyPersonNameOnly(title)) return false;
+    return true;
 }
 
 function filterTrendsByMedicalCategory(trends, category) {
@@ -2757,6 +2866,8 @@ app.get('/api/trends', ensureAuthenticated, async (req, res) => {
             {
                 url: 'https://www.abcheartfailure.org/',
                 category: 'Cardiologia',
+                requiredKeywords: CARDIOLOGY_TREND_KEYWORDS,
+                rejectPersonNameOnly: true,
                 selectors: [
                     { container: 'article a', title: 'h1, h2, h3, .entry-title' },
                     { container: '.post a', title: 'h1, h2, h3, .entry-title' },
@@ -2766,6 +2877,8 @@ app.get('/api/trends', ensureAuthenticated, async (req, res) => {
             {
                 url: 'https://ijcscardiol.org/#most-visited-list',
                 category: 'Cardiologia',
+                requiredKeywords: CARDIOLOGY_TREND_KEYWORDS,
+                rejectPersonNameOnly: true,
                 selectors: [
                     { container: '#most-visited-list a', title: null, directAnchor: true },
                     { container: '.most-visited a', title: null, directAnchor: true },
@@ -2775,6 +2888,8 @@ app.get('/api/trends', ensureAuthenticated, async (req, res) => {
             {
                 url: 'https://pubmed.ncbi.nlm.nih.gov/?term=cardiology&filter=hum_ani.humans&filter=other.excludepreprints&filter=years.2025-2028&size=100',
                 category: 'Cardiologia',
+                requiredKeywords: CARDIOLOGY_TREND_KEYWORDS,
+                rejectPersonNameOnly: true,
                 selectors: [
                     { container: 'a.docsum-title', title: null, directAnchor: true },
                     { container: '.docsum-content a.docsum-title', title: null, directAnchor: true },
@@ -2784,6 +2899,8 @@ app.get('/api/trends', ensureAuthenticated, async (req, res) => {
             {
                 url: 'https://pubmed.ncbi.nlm.nih.gov/?term=cardiology&filter=datesearch.y_1&filter=pubt.review&sort=date&size=100',
                 category: 'Cardiologia',
+                requiredKeywords: CARDIOLOGY_TREND_KEYWORDS,
+                rejectPersonNameOnly: true,
                 selectors: [
                     { container: 'a.docsum-title', title: null, directAnchor: true },
                     { container: '.docsum-content a.docsum-title', title: null, directAnchor: true },
@@ -2801,6 +2918,7 @@ app.get('/api/trends', ensureAuthenticated, async (req, res) => {
             try {
                 const urlObj = new URL(cleanHref, source.url);
                 if (!/^https?:$/.test(urlObj.protocol)) return;
+                if (!isTrendAllowedForSource(source, cleanTitle)) return;
                 bucket.push({ title: cleanTitle, url: urlObj.href, category: source.category });
             } catch {
                 // Ignore malformed URLs
