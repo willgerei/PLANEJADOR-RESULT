@@ -14,6 +14,7 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const { Document, Packer, Paragraph, TextRun } = require('docx');
 const medicalController = require('./MedicalController');
+const { validateUserChatMessage } = require('./chatValidation');
 const { translateBatch } = require('./services/translationExecutionService');
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -22,6 +23,26 @@ const upload = multer({ storage: multer.memoryStorage() });
 let trendsCache = { data: null, timestamp: 0 };
 const CACHE_TTL = 30 * 60 * 1000;
 const MAX_TRENDS = 12;
+const MEDICAL_CONTEXT_CACHE_TTL = 20 * 60 * 1000;
+const CONTENT_NOTES_MAX_LENGTH = 2000;
+const MEDICAL_CATEGORIES = [
+    'Dermatologia',
+    'Cirurgia Plástica',
+    'Nutrologia',
+    'Endocrinologia',
+    'Vascular',
+    'Cardiologia',
+    'Ginecologia',
+    'Odontologia',
+    'Psiquiatria',
+    'Ortopedia',
+    'Tricologia',
+    'Medicina Integrativa',
+    'Estética Médica'
+];
+const medicalContextCache = new Map();
+const conversationContextCache = new Map();
+let doctorsContentNotesColumnPromise = null;
 
 const app = express();
 const TOOL_DEFINITIONS = [
@@ -83,6 +104,142 @@ function ensureDirectoryForFile(filePath) {
     }
 }
 
+function normalizeContentNotes(value, options = {}) {
+    const normalized = String(value || '').trim();
+    if (normalized.length <= CONTENT_NOTES_MAX_LENGTH) return normalized;
+
+    if (options.truncate) {
+        return normalized.slice(0, CONTENT_NOTES_MAX_LENGTH).trim();
+    }
+
+    const error = new Error(`As observações devem ter no máximo ${CONTENT_NOTES_MAX_LENGTH} caracteres.`);
+    error.statusCode = 400;
+    throw error;
+}
+
+function normalizeComparableText(value) {
+    return String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function normalizeMedicalCategory(value) {
+    const normalizedValue = normalizeComparableText(value);
+    if (!normalizedValue || normalizedValue === 'todas' || normalizedValue === 'todos') return '';
+
+    return MEDICAL_CATEGORIES.find((category) => normalizeComparableText(category) === normalizedValue) || '';
+}
+
+function applyMedicalCategoryToTrends(trends, category) {
+    const normalizedCategory = normalizeMedicalCategory(category);
+    if (!normalizedCategory) return trends;
+
+    return (Array.isArray(trends) ? trends : []).map((trend) => ({
+        ...trend,
+        medicalCategory: normalizedCategory,
+        categoryAdvice: `Essa trend pode não ter boa aderência para ${normalizedCategory}. Use apenas como referência de formato se o tema não fizer sentido.`
+    }));
+}
+
+function getCachedMedicalContext(doctorId) {
+    try {
+        const cacheKey = String(doctorId || '').trim();
+        if (!cacheKey) return null;
+
+        const cached = medicalContextCache.get(cacheKey);
+        if (!cached) return null;
+
+        if (Date.now() - cached.timestamp > MEDICAL_CONTEXT_CACHE_TTL) {
+            medicalContextCache.delete(cacheKey);
+            return null;
+        }
+
+        return cached.context || null;
+    } catch (error) {
+        console.warn('[AI] Falha ao ler cache de contexto medico:', error.message);
+        return null;
+    }
+}
+
+function setCachedMedicalContext(doctorId, context) {
+    try {
+        const cacheKey = String(doctorId || '').trim();
+        if (!cacheKey || !context) return;
+
+        medicalContextCache.set(cacheKey, {
+            context,
+            timestamp: Date.now()
+        });
+    } catch (error) {
+        console.warn('[AI] Falha ao salvar cache de contexto medico:', error.message);
+    }
+}
+
+function getCachedConversationContext(conversationId) {
+    try {
+        const cacheKey = String(conversationId || '').trim();
+        if (!cacheKey) return null;
+
+        const cached = conversationContextCache.get(cacheKey);
+        if (!cached) return null;
+
+        if (Date.now() - cached.timestamp > MEDICAL_CONTEXT_CACHE_TTL) {
+            conversationContextCache.delete(cacheKey);
+            return null;
+        }
+
+        return cached.context || null;
+    } catch (error) {
+        console.warn('[AI] Falha ao ler cache de contexto da conversa:', error.message);
+        return null;
+    }
+}
+
+function setCachedConversationContext(conversationId, doctorId, context) {
+    try {
+        const cacheKey = String(conversationId || '').trim();
+        if (!cacheKey || !context) return;
+
+        conversationContextCache.set(cacheKey, {
+            doctorId: String(doctorId || '').trim(),
+            context,
+            timestamp: Date.now()
+        });
+    } catch (error) {
+        console.warn('[AI] Falha ao salvar cache de contexto da conversa:', error.message);
+    }
+}
+
+function invalidateMedicalContextCache(doctorId) {
+    try {
+        const cacheKey = String(doctorId || '').trim();
+        if (!cacheKey) return;
+
+        medicalContextCache.delete(cacheKey);
+        for (const [conversationId, cached] of conversationContextCache.entries()) {
+            if (String(cached?.doctorId || '') === cacheKey) {
+                conversationContextCache.delete(conversationId);
+            }
+        }
+    } catch (error) {
+        console.warn('[AI] Falha ao invalidar cache de contexto medico:', error.message);
+    }
+}
+
+function appendContentNotesToContext(context, contentNotes) {
+    const notes = normalizeContentNotes(contentNotes, { truncate: true });
+    if (!notes) return context;
+
+    return `${context || ''}
+
+--- OBSERVAÇÕES SOBRE CONTEÚDO DESEJADO ---
+${notes}
+`;
+}
+
 function initializeDoctorsTable() {
     db.run(`
         CREATE TABLE IF NOT EXISTS doctors (
@@ -92,6 +249,7 @@ function initializeDoctorsTable() {
             drive_folder_id TEXT NOT NULL,
             instructions_doc_id TEXT NOT NULL,
             feedback_doc_id TEXT NOT NULL,
+            content_notes TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `, (err) => {
@@ -100,6 +258,8 @@ function initializeDoctorsTable() {
             return;
         }
         console.log("[SQLite] Tabela 'doctors' pronta para uso.");
+        ensureDoctorsContentNotesColumn()
+            .catch((error) => console.error("[SQLite] Falha ao garantir coluna 'doctors.content_notes':", error.message));
     });
 }
 
@@ -276,6 +436,32 @@ function dbRun(sql, params = []) {
             resolve({ lastID: this.lastID, changes: this.changes });
         });
     });
+}
+
+async function ensureColumnExists(tableName, columnName, columnDefinition) {
+    if (!/^[a-zA-Z0-9_]+$/.test(tableName) || !/^[a-zA-Z0-9_]+$/.test(columnName)) {
+        throw new Error('Nome de tabela ou coluna invalido.');
+    }
+
+    const columns = await dbAll(`PRAGMA table_info(${tableName})`);
+    const exists = columns.some((column) => column.name === columnName);
+
+    if (!exists) {
+        await dbRun(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`);
+        console.log(`[SQLite] Coluna '${tableName}.${columnName}' adicionada.`);
+    }
+}
+
+function ensureDoctorsContentNotesColumn() {
+    if (!doctorsContentNotesColumnPromise) {
+        doctorsContentNotesColumnPromise = ensureColumnExists('doctors', 'content_notes', 'TEXT')
+            .catch((error) => {
+                doctorsContentNotesColumnPromise = null;
+                throw error;
+            });
+    }
+
+    return doctorsContentNotesColumnPromise;
 }
 
 function normalizeAppUser(userRow) {
@@ -562,6 +748,7 @@ function normalizeGenerationRequest(payload = {}) {
         prompt: String(payload.prompt || '').trim(),
         trendUrl: String(payload.trendUrl || '').trim(),
         trendTitle: String(payload.trendTitle || '').trim(),
+        trendCategory: normalizeMedicalCategory(payload.trendCategory || payload.category),
         previousCopy: String(payload.previousCopy || '').trim()
     };
 }
@@ -577,27 +764,38 @@ function buildFeedbackHeader(userName, feedbackText) {
     return `\n[${userName}] deu feedback as ${HH}:${MM} ${DD}/${MMm}/${YYYY}: ${feedbackText}\n---`;
 }
 
-function buildGenerationPrompt(prompt, previousCopy = '') {
+function buildGenerationPrompt(prompt, previousCopy = '', trendCategory = '') {
     const normalizedPrompt = String(prompt || '').trim();
     const normalizedPreviousCopy = String(previousCopy || '').trim();
+    const normalizedTrendCategory = normalizeMedicalCategory(trendCategory);
+    const instructionBlocks = [];
 
-    if (!normalizedPreviousCopy) return normalizedPrompt;
+    if (normalizedTrendCategory) {
+        instructionBlocks.push(`INSTRUÇÃO INTERNA SOBRE TREND MÉDICA:
+- Adapte esta trend para a especialidade selecionada: ${normalizedTrendCategory}.
+- Não force conexão se a trend não fizer sentido para essa especialidade.
+- Prefira sugestões úteis, éticas e aplicáveis à comunicação médica.
+- Se a trend tiver baixa aderência, use apenas como referência de formato, não de tema.`);
+    }
 
-    return `${normalizedPrompt}
-
-INSTRUÇÃO INTERNA ADICIONAL:
+    if (normalizedPreviousCopy) {
+        instructionBlocks.push(`INSTRUÇÃO INTERNA ADICIONAL:
 - Gere uma NOVA variação sobre o mesmo tema, mantendo o objetivo, o tom e o contexto do cliente.
 - Priorize o feedback mais recente e as diretrizes anexadas no contexto.
 - Não repita literalmente frases, gancho inicial, CTA, sequência narrativa ou estrutura dominante da versão anterior.
 - Traga um ângulo novo, com desenvolvimento, exemplos e progressão diferentes.
 
 VERSÃO ANTERIOR PARA EVITAR REPETIÇÃO LITERAL:
-${normalizedPreviousCopy}`;
+${normalizedPreviousCopy}`);
+    }
+
+    return [normalizedPrompt, ...instructionBlocks].filter(Boolean).join('\n\n');
 }
 
 async function getDoctorContextMetadata(doctorId) {
+    await ensureDoctorsContentNotesColumn();
     const row = await dbGet(
-        `SELECT id, drive_folder_id, instructions_doc_id, feedback_doc_id
+        `SELECT id, drive_folder_id, instructions_doc_id, feedback_doc_id, content_notes
          FROM doctors
          WHERE id = ?`,
         [doctorId]
@@ -610,7 +808,42 @@ async function getDoctorContextMetadata(doctorId) {
     return row;
 }
 
-async function generateCopyFromRequest(requestPayload, auth, doctorRow = null) {
+async function resolveMedicalContextForDoctor({ doctorId, doctorRow = null, auth, conversationId = null }) {
+    const resolvedDoctorId = String(doctorId || doctorRow?.doctor_id || doctorRow?.id || '').trim();
+    if (!resolvedDoctorId) {
+        throw new Error('Missing doctor ID for context retrieval.');
+    }
+
+    const cachedConversationContext = getCachedConversationContext(conversationId);
+    if (cachedConversationContext) {
+        console.log(`[AI] Context cache hit conversation=${conversationId}`);
+        return cachedConversationContext;
+    }
+
+    const cachedMedicalContext = getCachedMedicalContext(resolvedDoctorId);
+    if (cachedMedicalContext) {
+        console.log(`[AI] Context cache hit doctor=${resolvedDoctorId}`);
+        setCachedConversationContext(conversationId, resolvedDoctorId, cachedMedicalContext);
+        return cachedMedicalContext;
+    }
+
+    const row = doctorRow || await getDoctorContextMetadata(resolvedDoctorId);
+    console.log(`[AI] Context cache miss doctor=${resolvedDoctorId}`);
+    const contextStr = await medicalController.fetchContext(
+        row.instructions_doc_id,
+        row.feedback_doc_id,
+        auth,
+        row.drive_folder_id
+    );
+    const contextWithNotes = appendContentNotesToContext(contextStr, row.content_notes);
+
+    setCachedMedicalContext(resolvedDoctorId, contextWithNotes);
+    setCachedConversationContext(conversationId, resolvedDoctorId, contextWithNotes);
+
+    return contextWithNotes;
+}
+
+async function generateCopyFromRequest(requestPayload, auth, doctorRow = null, options = {}) {
     const request = normalizeGenerationRequest(requestPayload);
 
     if (!request.doctorId || !request.prompt) {
@@ -618,12 +851,13 @@ async function generateCopyFromRequest(requestPayload, auth, doctorRow = null) {
     }
 
     const row = doctorRow || await getDoctorContextMetadata(request.doctorId);
-    const contextStr = await medicalController.fetchContext(
-        row.instructions_doc_id,
-        row.feedback_doc_id,
+    const startedAt = Date.now();
+    const contextStr = await resolveMedicalContextForDoctor({
+        doctorId: request.doctorId,
+        doctorRow: row,
         auth,
-        row.drive_folder_id
-    );
+        conversationId: options.conversationId
+    });
 
     let trendContext = '';
     if (request.trendUrl) {
@@ -635,14 +869,16 @@ async function generateCopyFromRequest(requestPayload, auth, doctorRow = null) {
     }
 
     const generatedCopy = await medicalController.generateMedicalCopy(
-        buildGenerationPrompt(request.prompt, request.previousCopy),
+        buildGenerationPrompt(request.prompt, request.previousCopy, request.trendCategory),
         contextStr,
         trendContext
     );
+    console.log(`[AI] Generation finished doctor=${request.doctorId} in ${Date.now() - startedAt}ms`);
 
     return {
         copy: generatedCopy,
-        doctorContextRetrieved: true
+        doctorContextRetrieved: true,
+        medicalContext: contextStr
     };
 }
 
@@ -672,6 +908,7 @@ async function createContentSessionFromGeneration({ request, copy, userId }) {
 }
 
 async function getContentSessionForUser(sessionId, userId) {
+    await ensureDoctorsContentNotesColumn();
     return dbGet(
         `SELECT
             cs.*,
@@ -679,7 +916,8 @@ async function getContentSessionForUser(sessionId, userId) {
             d.specialty AS doctor_specialty,
             d.drive_folder_id,
             d.instructions_doc_id,
-            d.feedback_doc_id
+            d.feedback_doc_id,
+            d.content_notes
          FROM content_sessions cs
          INNER JOIN doctors d ON d.id = cs.doctor_id
          WHERE cs.id = ? AND cs.user_id = ?
@@ -944,7 +1182,7 @@ async function addContentMessage({ conversationId, role, message, messageType = 
     return getContentMessageById(result.lastID);
 }
 
-async function createContentConversationFromGeneration({ request, copy, userId }) {
+async function createContentConversationFromGeneration({ request, copy, userId, medicalContext = '' }) {
     const contentType = inferContentTypeFromCopy(copy, request.prompt);
     const result = await dbRun(
         `INSERT INTO content_conversations (
@@ -970,6 +1208,8 @@ async function createContentConversationFromGeneration({ request, copy, userId }
         messageType: 'initial_generation'
     });
 
+    setCachedConversationContext(result.lastID, request.doctorId, medicalContext);
+
     return {
         conversationId: result.lastID,
         contentType,
@@ -978,6 +1218,7 @@ async function createContentConversationFromGeneration({ request, copy, userId }
 }
 
 async function getContentConversationForUser(conversationId, userId) {
+    await ensureDoctorsContentNotesColumn();
     return dbGet(
         `SELECT
             cc.*,
@@ -985,7 +1226,8 @@ async function getContentConversationForUser(conversationId, userId) {
             d.specialty AS doctor_specialty,
             d.drive_folder_id,
             d.instructions_doc_id,
-            d.feedback_doc_id
+            d.feedback_doc_id,
+            d.content_notes
          FROM content_conversations cc
          INNER JOIN doctors d ON d.id = cc.doctor_id
          WHERE cc.id = ? AND cc.user_id = ?
@@ -995,6 +1237,7 @@ async function getContentConversationForUser(conversationId, userId) {
 }
 
 async function getContentMessageForUser(messageId, userId) {
+    await ensureDoctorsContentNotesColumn();
     return dbGet(
         `SELECT
             cm.id,
@@ -1011,7 +1254,8 @@ async function getContentMessageForUser(messageId, userId) {
             d.specialty AS doctor_specialty,
             d.drive_folder_id,
             d.instructions_doc_id,
-            d.feedback_doc_id
+            d.feedback_doc_id,
+            d.content_notes
          FROM content_messages cm
          INNER JOIN content_conversations cc ON cc.id = cm.conversation_id
          INNER JOIN doctors d ON d.id = cc.doctor_id
@@ -1202,6 +1446,7 @@ async function persistDoctorFeedback({ doctorId, feedbackText, userName, auth })
     const header = buildFeedbackHeader(userName, feedbackText);
 
     await medicalController.appendFeedback(row.feedback_doc_id, header, auth);
+    invalidateMedicalContextCache(doctorId);
 
     return row;
 }
@@ -1558,6 +1803,7 @@ function renderMainPage(req, res, { activePage = 'dashboard', activeToolSlug = n
         activeToolSlug,
         activeTool,
         tools: TOOL_DEFINITIONS,
+        medicalCategories: MEDICAL_CATEGORIES,
         pageTitle: buildPageTitle(activePage, activeTool)
     });
 }
@@ -1599,8 +1845,9 @@ app.get('/api/doctors', ensureAuthenticated, async (req, res) => {
         if (!auth) return;
 
         await ensureDoctorsSeeded(auth);
+        await ensureDoctorsContentNotesColumn();
         const rows = await dbAll(
-            `SELECT id, name, specialty, drive_folder_id, instructions_doc_id, feedback_doc_id
+            `SELECT id, name, specialty, drive_folder_id, instructions_doc_id, feedback_doc_id, content_notes
              FROM doctors
              ORDER BY name COLLATE NOCASE ASC`
         );
@@ -1667,7 +1914,8 @@ app.post('/api/orchestrate', ensureAuthenticated, async (req, res) => {
         const conversation = await createContentConversationFromGeneration({
             request,
             copy: result.copy,
-            userId: req.user.id
+            userId: req.user.id,
+            medicalContext: result.medicalContext
         });
 
         res.json({
@@ -1705,7 +1953,8 @@ app.post('/api/content/conversations', ensureAuthenticated, async (req, res) => 
         const conversation = await createContentConversationFromGeneration({
             request,
             copy: result.copy,
-            userId: req.user.id
+            userId: req.user.id,
+            medicalContext: result.medicalContext
         });
 
         return res.status(201).json({
@@ -1751,16 +2000,34 @@ app.post('/api/content/conversations/:id/messages', ensureAuthenticated, async (
             messageType: 'refinement'
         });
 
+        const validation = validateUserChatMessage(userMessage, 'refinement');
+        if (!validation.ok) {
+            const assistantMessage = await addContentMessage({
+                conversationId: conversation.id,
+                role: 'assistant',
+                message: validation.message,
+                messageType: 'system_notice'
+            });
+
+            return res.status(200).json({
+                message: validation.message,
+                blocked: true,
+                blockCode: validation.code,
+                userMessage: savedUserMessage,
+                assistantMessage
+            });
+        }
+
         const auth = await getGoogleAuthOrRespond(req, res);
         if (!auth) return;
 
         const [medicalContext, conversationMessages] = await Promise.all([
-            medicalController.fetchContext(
-                conversation.instructions_doc_id,
-                conversation.feedback_doc_id,
+            resolveMedicalContextForDoctor({
+                doctorId: conversation.doctor_id,
+                doctorRow: conversation,
                 auth,
-                conversation.drive_folder_id
-            ),
+                conversationId: conversation.id
+            }),
             getContentConversationMessages(conversation.id)
         ]);
 
@@ -1813,7 +2080,8 @@ app.post('/api/content/conversations/:id/regenerate', ensureAuthenticated, async
                 previousCopy: latestAssistant?.message || ''
             },
             auth,
-            conversation
+            conversation,
+            { conversationId: conversation.id }
         );
         const assistantMessage = await addContentMessage({
             conversationId: conversation.id,
@@ -1965,6 +2233,33 @@ app.post('/api/content/messages/:id/dislike', ensureAuthenticated, async (req, r
     }
 });
 
+app.post('/api/content/conversations/:id/export', ensureAuthenticated, async (req, res) => {
+    const conversationId = String(req.params.id || '').trim();
+    if (!conversationId) return res.status(400).json({ error: 'conversationId is required.' });
+
+    try {
+        const conversation = await getContentConversationForUser(conversationId, req.user.id);
+        if (!conversation) return res.status(404).json({ error: 'Conversa não encontrada.' });
+
+        const auth = await getGoogleAuthOrRespond(req, res);
+        if (!auth) return;
+
+        const historyResult = await tryUploadConversationHistory({ conversation, userId: req.user.id, auth });
+
+        return res.status(200).json({
+            message: historyResult.historySaved
+                ? 'Histórico salvo sem finalizar a conversa.'
+                : 'Histórico mantido no banco local.',
+            status: conversation.status || 'active',
+            ...historyResult
+        });
+    } catch (error) {
+        if (await handleGoogleApiAuthFailure(req, res, error)) return;
+        console.error('[Content Chat] Falha ao exportar conversa:', error.message);
+        return res.status(500).json({ error: 'Falha ao salvar histórico: ' + error.message });
+    }
+});
+
 app.post('/api/content/conversations/:id/finish', ensureAuthenticated, async (req, res) => {
     const conversationId = String(req.params.id || '').trim();
     if (!conversationId) return res.status(400).json({ error: 'conversationId is required.' });
@@ -2010,12 +2305,11 @@ app.post('/api/content-sessions/:sessionId/refine', ensureAuthenticated, async (
         if (!auth) return;
 
         const [medicalContext, messages] = await Promise.all([
-            medicalController.fetchContext(
-                session.instructions_doc_id,
-                session.feedback_doc_id,
-                auth,
-                session.drive_folder_id
-            ),
+            resolveMedicalContextForDoctor({
+                doctorId: session.doctor_id,
+                doctorRow: session,
+                auth
+            }),
             getContentChatMessages(session.id)
         ]);
 
@@ -2249,10 +2543,18 @@ app.post('/api/onboard-doctor', ensureAuthenticated, upload.array('files'), asyn
         return res.status(400).json({ error: 'Nome e especialidade são obrigatórios.' });
     }
 
+    let contentNotes = '';
+    try {
+        contentNotes = normalizeContentNotes(req.body.content_notes || req.body.contentNotes || '');
+    } catch (error) {
+        return res.status(error.statusCode || 400).json({ error: error.message });
+    }
+
     try {
         const auth = await getGoogleAuthOrRespond(req, res);
         if (!auth) return;
 
+        await ensureDoctorsContentNotesColumn();
         const drive = createDriveClient(auth);
 
         // a) Criar pasta no Drive com o nome do médico
@@ -2312,8 +2614,8 @@ app.post('/api/onboard-doctor', ensureAuthenticated, upload.array('files'), asyn
 
         // e) INSERT no SQLite
         db.run(
-            `INSERT INTO doctors (name, specialty, drive_folder_id, instructions_doc_id, feedback_doc_id) VALUES (?, ?, ?, ?, ?)`,
-            [name, specialty, folderId, instructionsDocId, feedbackDocId],
+            `INSERT INTO doctors (name, specialty, drive_folder_id, instructions_doc_id, feedback_doc_id, content_notes) VALUES (?, ?, ?, ?, ?, ?)`,
+            [name, specialty, folderId, instructionsDocId, feedbackDocId, contentNotes || null],
             function (err) {
                 if (err) {
                     console.error('[Onboarding] Erro no INSERT:', err.message);
@@ -2335,10 +2637,11 @@ app.post('/api/onboard-doctor', ensureAuthenticated, upload.array('files'), asyn
 app.get('/api/trends', ensureAuthenticated, async (req, res) => {
     const now = Date.now();
     const forceRefresh = ['1', 'true', 'yes'].includes(String(req.query.refresh || '').toLowerCase());
+    const selectedCategory = normalizeMedicalCategory(req.query.category);
 
     if (!forceRefresh && trendsCache.data && (now - trendsCache.timestamp < CACHE_TTL)) {
         console.log('[Trends] Servindo do cache');
-        return res.json(trendsCache.data);
+        return res.json(applyMedicalCategoryToTrends(trendsCache.data, selectedCategory));
     }
 
     try {
@@ -2548,7 +2851,7 @@ app.get('/api/trends', ensureAuthenticated, async (req, res) => {
         console.log(`[Trends][Translation] requested=${stats.requested} translated=${stats.translated} fallback=${stats.fallback}`);
 
         trendsCache = { data: translatedTrends, timestamp: now };
-        res.json(translatedTrends);
+        res.json(applyMedicalCategoryToTrends(translatedTrends, selectedCategory));
 
     } catch (err) {
         console.error('[Trends] Falha ao raspar temas:', err.message);

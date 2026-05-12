@@ -144,6 +144,15 @@
                             </button>
                             <span id="trend-search-status" class="trend-search-status"></span>
                         </div>
+                        <div class="trends-specialty-filter">
+                            <label for="trend-category-select">Especialidade</label>
+                            <select id="trend-category-select" aria-label="Filtrar trends por especialidade médica">
+                                <option value="">Todas</option>
+                                <% (medicalCategories || []).forEach((category) => { %>
+                                    <option value="<%= category %>"><%= category %></option>
+                                <% }) %>
+                            </select>
+                        </div>
                     </div>
                     <button id="trend-refresh-btn" class="btn-pill btn-refresh-trends" type="button">Refresh</button>
                 </div>
@@ -208,45 +217,47 @@
 
             <!-- ── TAB: PLANEJAMENTO ── -->
             <section id="orchestration-tab" class="tab-pane <%= activePage === 'planejamento' ? 'active' : '' %>">
-                <div class="form-card">
-                    <h2 class="form-title">Agente de Conteúdos</h2>
-                    <p class="form-subtitle">Crie conteúdos estratégicos baseados em evidência com o método Result.</p>
+                <div id="planning-content-card" class="form-card">
+                    <div id="planning-creation-form" class="planning-creation-form">
+                        <h2 class="form-title">Agente de Conteúdos</h2>
+                        <p class="form-subtitle">Crie conteúdos estratégicos baseados em evidência com o método Result.</p>
 
-                    <div class="input-group">
-                        <label class="input-label">Customer Success (CS)</label>
-                        <select id="cs-select">
-                            <option value="" disabled selected>Selecione seu atendimento...</option>
-                            <option>Liderança</option>
-                            <option>Rebeca</option>
-                            <option>Amanda</option>
-                            <option>Andressa</option>
-                            <option>Outro</option>
-                        </select>
-                    </div>
-
-                    <div class="input-group">
-                        <label class="input-label">Médico ou Clínica</label>
-                        <select id="doctor-select" disabled>
-                            <option>Buscando médicos autorizados...</option>
-                        </select>
-                    </div>
-
-                    <div class="input-group">
-                        <label class="input-label">Instruções para o Gemini</label>
-                        <textarea id="prompt-input" rows="5"
-                            placeholder="Ex: Crie um carrossel sobre biohacking focado em longevidade ativa..."></textarea>
-                        <div id="selected-trend-context" class="selected-trend-context hidden">
-                            <span class="selected-trend-label">Trend vinculada ao prompt</span>
-                            <a id="selected-trend-link" href="#" target="_blank" rel="noopener noreferrer"></a>
-                            <button id="selected-trend-clear" class="selected-trend-clear" type="button">Remover trend</button>
+                        <div class="input-group">
+                            <label class="input-label">Customer Success (CS)</label>
+                            <select id="cs-select">
+                                <option value="" disabled selected>Selecione seu atendimento...</option>
+                                <option>Liderança</option>
+                                <option>Rebeca</option>
+                                <option>Amanda</option>
+                                <option>Andressa</option>
+                                <option>Outro</option>
+                            </select>
                         </div>
-                    </div>
 
-                    <button class="btn-hero btn-hero-primary" style="width:100%" id="btn-generate"
-                        onclick="generateCopy()">✨ Gerar planejamento personalizado</button>
-                    <div id="loader"
-                        style="display:none; text-align:center; padding:20px; color:var(--primary); font-weight:600;">
-                        Sincronizando Drive & Gemini...</div>
+                        <div class="input-group">
+                            <label class="input-label">Cliente</label>
+                            <select id="doctor-select" disabled>
+                                <option>Buscando clientes autorizados...</option>
+                            </select>
+                        </div>
+
+                        <div class="input-group">
+                            <label class="input-label">Instruções para o conteúdo</label>
+                            <textarea id="prompt-input" rows="5"
+                                placeholder="Ex: Crie um carrossel sobre biohacking focado em longevidade ativa..."></textarea>
+                            <div id="selected-trend-context" class="selected-trend-context hidden">
+                                <span class="selected-trend-label">Artigo vinculado ao prompt</span>
+                                <a id="selected-trend-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+                                <button id="selected-trend-clear" class="selected-trend-clear" type="button">Remover vínculo</button>
+                            </div>
+                        </div>
+
+                        <button class="btn-hero btn-hero-primary" style="width:100%" id="btn-generate"
+                            onclick="generateCopy()">Gerar conteúdo personalizado</button>
+                        <div id="loader"
+                            style="display:none; text-align:center; padding:20px; color:var(--primary); font-weight:600;">
+                            Sincronizando Conteúdos...</div>
+                    </div>
 
                     <!-- Result Zone -->
                     <div id="step-result" class="hidden" style="margin-top:40px;">
@@ -263,23 +274,39 @@
                         <div id="content-chat-panel" class="content-chat-panel">
                             <div class="content-chat-header">
                                 <div>
-                                    <span class="content-chat-kicker">Modo chat</span>
-                                    <h3>Ajustes do conteúdo</h3>
+                                    <span class="content-chat-kicker">Chat</span>
+                                    <h3>Conteúdo gerado</h3>
                                 </div>
                             </div>
 
-                            <div id="content-chat-messages" class="content-chat-messages" aria-live="polite"></div>
+                            <div class="content-chat-scroll-wrap">
+                                <div id="content-chat-messages" class="content-chat-messages" aria-live="polite"></div>
+                                <button id="content-chat-scroll-up" class="content-chat-scroll-up hidden" type="button"
+                                    aria-label="Subir para a mensagem anterior" title="Subir para a mensagem anterior"
+                                    onclick="scrollContentChatToPreviousMessage()">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2.4" stroke-linecap="round"
+                                        stroke-linejoin="round" aria-hidden="true" focusable="false">
+                                        <path d="M12 19V5"></path>
+                                        <path d="m5 12 7-7 7 7"></path>
+                                    </svg>
+                                </button>
+                            </div>
 
                             <div class="content-chat-compose">
                                 <textarea id="content-chat-input" rows="3"
-                                    placeholder="Digite um ajuste para este conteúdo..."></textarea>
+                                    placeholder="Digite um ajuste para o conteúdo atual..."></textarea>
                                 <button id="btn-send-chat-adjustment" class="btn-pill btn-pill-dark" type="button"
                                     onclick="sendContentChatAdjustment()">
-                                    Enviar ajuste
+                                    Enviar mensagem
                                 </button>
                             </div>
                             <div id="content-chat-status" class="content-chat-status" aria-live="polite"></div>
                         </div>
+                        <button id="btn-create-new-planning" class="btn-hero btn-hero-primary content-chat-new-planning"
+                            type="button" onclick="createNewPlanningFromChat()">
+                            Criar novo planejamento
+                        </button>
                     </div>
                 </div>
             </section>
@@ -318,7 +345,39 @@
                     </div>
 
                     <div class="input-group">
+                        <label class="input-label">Observações sobre conteúdo desejado</label>
+                        <textarea id="ob-content-notes" rows="4" maxlength="2000"
+                            placeholder="Exemplo: conteúdos mais científicos, roteiros menos comerciais, carrosséis curtos, tom mais conservador, evitar linguagem promocional."></textarea>
+                        <p class="field-helper">Máximo de 2000 caracteres. Use este campo para preferências editoriais que devem orientar a IA.</p>
+                    </div>
+
+                    <div class="input-group">
                         <label class="input-label">Arquivos Base (.docx, .pdf)</label>
+                        <div class="upload-guidance">
+                            <p>Envie documentos que ajudem a IA a entender o médico e produzir conteúdos para redes sociais.</p>
+                            <div class="upload-guidance-grid">
+                                <div>
+                                    <strong>Boas opções:</strong>
+                                    <ul>
+                                        <li>briefing estratégico do médico;</li>
+                                        <li>tom de voz e palavras proibidas;</li>
+                                        <li>posicionamento e temas permitidos;</li>
+                                        <li>exemplos de conteúdos aprovados;</li>
+                                        <li>feedbacks anteriores e planejamento editorial.</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <strong>Evite enviar:</strong>
+                                    <ul>
+                                        <li>manuais de evento;</li>
+                                        <li>materiais impressos muito específicos;</li>
+                                        <li>planejamentos de campanha offline;</li>
+                                        <li>arquivos operacionais internos;</li>
+                                        <li>documentos sem relação com conteúdo digital.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
                         <div onclick="document.getElementById('file-upload').click()"
                             style="background:var(--bg-hover); border:2px dashed var(--border-soft); padding:30px; border-radius:18px; text-align:center; cursor:pointer;">
                             <span style="color:var(--text-secondary); font-size:0.9rem;">Arraste ou clique para anexar
@@ -612,7 +671,7 @@
 
                                         <div class="tool-focus-copy">
                                             <h3>Correção de Texto</h3>
-                                            <p>Cole uma copy em português do Brasil para revisar ortografia, gramática e estilo com apoio do LanguageTool. Você pode aplicar sugestões individuais sem sair da tela.</p>
+                                            <p>Cole uma copy para revisar ortografia, gramática e estilo com apoio do LanguageTool. Você pode aplicar sugestões individuais sem sair da tela.</p>
                                         </div>
                                     </div>
 
@@ -684,6 +743,7 @@
         let activeFeedbackMessageId = null;
         let selectedTrend = null;
         const TRENDS_TOTAL = 12;
+        const MEDICAL_CATEGORIES = <%- JSON.stringify(medicalCategories || []) %>;
         let currentTrends = [];
         let trendSearchState = { query: '', matches: [], cursor: -1 };
         let activeQrCode = null;
@@ -721,6 +781,7 @@
             if (activePage === 'planejamento') {
                 hydratePlanningPrefill();
                 loadDoctors();
+                setupContentChatScrollControls();
             }
 
             if (activePage === 'ferramentas' && activeTool === 'gerador-qr') {
@@ -776,6 +837,17 @@
                 .trim();
         }
 
+        function normalizeMedicalCategoryValue(value) {
+            const normalized = normalizeSearchText(value);
+            if (!normalized || normalized === 'todas' || normalized === 'todos') return '';
+            return MEDICAL_CATEGORIES.find((category) => normalizeSearchText(category) === normalized) || '';
+        }
+
+        function getSelectedTrendCategory() {
+            const select = document.getElementById('trend-category-select');
+            return normalizeMedicalCategoryValue(select ? select.value : '');
+        }
+
         function resetTrendSearchState(clearInput = false) {
             trendSearchState = { query: '', matches: [], cursor: -1 };
             const statusEl = document.getElementById('trend-search-status');
@@ -824,7 +896,7 @@
                 tag.style.color = 'var(--primary)';
                 tag.style.textTransform = 'uppercase';
                 tag.style.letterSpacing = '0.05em';
-                tag.innerText = `#${t.category || 'Tema'}`;
+                tag.innerText = `#${t.medicalCategory || t.category || 'Tema'}`;
 
                 const title = document.createElement('div');
                 title.className = 'title';
@@ -833,6 +905,12 @@
                 tags.appendChild(tag);
                 top.appendChild(tags);
                 top.appendChild(title);
+                if (t.medicalCategory) {
+                    const categoryNote = document.createElement('div');
+                    categoryNote.className = 'trend-category-note';
+                    categoryNote.innerText = `Adaptar para ${t.medicalCategory} sem forçar tema.`;
+                    top.appendChild(categoryNote);
+                }
 
                 const actions = document.createElement('div');
                 actions.className = 'actions';
@@ -894,7 +972,7 @@
 
             if (normalizedQuery !== trendSearchState.query) {
                 const matches = currentTrends.reduce((acc, trend, index) => {
-                    const haystack = normalizeSearchText(`${trend.title || ''} ${trend.category || ''}`);
+                    const haystack = normalizeSearchText(`${trend.title || ''} ${trend.category || ''} ${trend.medicalCategory || ''}`);
                     if (haystack.includes(normalizedQuery)) acc.push(index);
                     return acc;
                 }, []);
@@ -926,6 +1004,7 @@
             const searchInput = document.getElementById('trend-search-input');
             const searchBtn = document.getElementById('trend-search-btn');
             const refreshBtn = document.getElementById('trend-refresh-btn');
+            const categorySelect = document.getElementById('trend-category-select');
 
             if (searchBtn) searchBtn.addEventListener('click', searchTrends);
             if (searchInput) {
@@ -943,6 +1022,7 @@
                     }
                 });
             }
+            if (categorySelect) categorySelect.addEventListener('change', () => loadTrends({ forceRefresh: false }));
             if (refreshBtn) refreshBtn.addEventListener('click', () => loadTrends({ forceRefresh: true }));
         }
 
@@ -960,7 +1040,11 @@
             }
 
             try {
-                const endpoint = forceRefresh ? '/api/trends?refresh=1' : '/api/trends';
+                const params = new URLSearchParams();
+                const category = getSelectedTrendCategory();
+                if (forceRefresh) params.set('refresh', '1');
+                if (category) params.set('category', category);
+                const endpoint = params.toString() ? `/api/trends?${params.toString()}` : '/api/trends';
                 const res = await fetch(endpoint);
                 if (!res.ok) throw new Error('Falha ao buscar tendências');
                 const trends = await res.json();
@@ -2148,7 +2232,8 @@
                 if (prefill && prefill.selectedTrend && prefill.selectedTrend.url) {
                     selectedTrend = {
                         title: prefill.selectedTrend.title || prefill.selectedTrend.url,
-                        url: prefill.selectedTrend.url
+                        url: prefill.selectedTrend.url,
+                        medicalCategory: normalizeMedicalCategoryValue(prefill.selectedTrend.medicalCategory)
                     };
                     updateSelectedTrendUI();
                 }
@@ -2171,7 +2256,9 @@
             }
 
             link.href = selectedTrend.url;
-            link.innerText = selectedTrend.title || selectedTrend.url;
+            link.innerText = selectedTrend.medicalCategory
+                ? `${selectedTrend.title || selectedTrend.url} (${selectedTrend.medicalCategory})`
+                : selectedTrend.title || selectedTrend.url;
             wrapper.classList.remove('hidden');
         }
 
@@ -2183,12 +2270,13 @@
         function useTrendTheme(trend) {
             const title = trend && trend.title ? trend.title : '';
             const url = trend && trend.url ? trend.url : '';
+            const medicalCategory = normalizeMedicalCategoryValue(trend?.medicalCategory || getSelectedTrendCategory());
             const prompt = `Crie um carrossel sobre: ${title}`;
 
             try {
                 sessionStorage.setItem('resultpubli-planning-prefill', JSON.stringify({
                     prompt,
-                    selectedTrend: title && url ? { title, url } : null
+                    selectedTrend: title && url ? { title, url, medicalCategory } : null
                 }));
             } catch (error) {
                 console.error(error);
@@ -2202,7 +2290,8 @@
                 doctorId: String(request.doctorId || '').trim(),
                 prompt: String(request.prompt || '').trim(),
                 trendUrl: String(request.trendUrl || '').trim(),
-                trendTitle: String(request.trendTitle || '').trim()
+                trendTitle: String(request.trendTitle || '').trim(),
+                trendCategory: normalizeMedicalCategoryValue(request.trendCategory || request.category)
             };
         }
 
@@ -2211,7 +2300,8 @@
                 doctorId: document.getElementById('doctor-select')?.value,
                 prompt: document.getElementById('prompt-input')?.value,
                 trendUrl: selectedTrend?.url || '',
-                trendTitle: selectedTrend?.title || ''
+                trendTitle: selectedTrend?.title || '',
+                trendCategory: selectedTrend?.medicalCategory || ''
             });
         }
 
@@ -2219,7 +2309,8 @@
             const fixedButtons = [
                 document.getElementById('btn-download'),
                 document.getElementById('btn-send-chat-adjustment'),
-                document.getElementById('btn-save-chat-history')
+                document.getElementById('btn-save-chat-history'),
+                document.getElementById('btn-create-new-planning')
             ].filter(Boolean);
             const messageButtons = Array.from(document.querySelectorAll('.content-chat-icon-btn'));
 
@@ -2264,6 +2355,13 @@
             if (output) output.innerText = lastGeneratedCopy;
         }
 
+        function setPlanningChatMode(isActive) {
+            const card = document.getElementById('planning-content-card');
+            const form = document.getElementById('planning-creation-form');
+            if (card) card.classList.toggle('planning-chat-active', Boolean(isActive));
+            if (form) form.setAttribute('aria-hidden', isActive ? 'true' : 'false');
+        }
+
         function applyGeneratedCopy(copy, request, sessionIdOrOptions = null) {
             const options = sessionIdOrOptions && typeof sessionIdOrOptions === 'object'
                 ? sessionIdOrOptions
@@ -2291,9 +2389,10 @@
 
             if (stepResult) stepResult.classList.remove('hidden');
             if (panel) panel.classList.remove('hidden');
+            setPlanningChatMode(true);
             if (input) input.value = '';
             if (status) status.innerText = '';
-            renderContentChatMessages();
+            renderContentChatMessages({ scrollTo: 'latest-assistant' });
         }
 
         function resetContentChatPanel() {
@@ -2308,13 +2407,27 @@
             renderContentChatMessages();
         }
 
-        function createChatActionButton(icon, label, handler) {
+        function getChatActionIcon(iconName) {
+            const iconProps = 'width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"';
+            const icons = {
+                copy: `<svg ${iconProps}><rect x="9" y="9" width="12" height="12" rx="3"></rect><rect x="3" y="3" width="12" height="12" rx="3"></rect></svg>`,
+                like: `<svg ${iconProps}><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path><path d="M7 11l4.2-8.4A2 2 0 0 1 15 3.5V9h4.5a2 2 0 0 1 2 2.3l-1.4 8A3 3 0 0 1 17.2 22H7z"></path></svg>`,
+                dislike: `<svg ${iconProps}><path d="M17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"></path><path d="M17 13l-4.2 8.4A2 2 0 0 1 9 20.5V15H4.5a2 2 0 0 1-2-2.3l1.4-8A3 3 0 0 1 6.8 2H17z"></path></svg>`,
+                upload: `<svg ${iconProps}><path d="M12 3v13"></path><path d="M6.5 8.5 12 3l5.5 5.5"></path><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path></svg>`,
+                refresh: `<svg ${iconProps}><path d="M20 6v5h-5"></path><path d="M4 18v-5h5"></path><path d="M18.5 9A7 7 0 0 0 6.2 6.7L4 9"></path><path d="M5.5 15a7 7 0 0 0 12.3 2.3L20 15"></path></svg>`,
+                more: `<svg ${iconProps}><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"></circle><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"></circle></svg>`
+            };
+
+            return icons[iconName] || icons.more;
+        }
+
+        function createChatActionButton(iconName, label, handler) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'content-chat-icon-btn';
             button.setAttribute('aria-label', label);
             button.title = label;
-            button.innerText = icon;
+            button.innerHTML = getChatActionIcon(iconName);
             button.addEventListener('click', handler);
             return button;
         }
@@ -2363,16 +2476,81 @@
             }
         }
 
-        function renderContentChatMessages() {
+        function getChatBubbleScrollTop(container, bubble) {
+            return bubble.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+        }
+
+        function scrollContentChatToBubble(container, bubble, behavior = 'auto') {
+            if (!container || !bubble) return;
+            container.scrollTo({
+                top: getChatBubbleScrollTop(container, bubble),
+                behavior
+            });
+        }
+
+        function updateContentChatScrollButton() {
+            const container = document.getElementById('content-chat-messages');
+            const button = document.getElementById('content-chat-scroll-up');
+            if (!container || !button) return;
+
+            const canScrollUp = container.scrollTop > 12 && container.scrollHeight > container.clientHeight + 2;
+            button.classList.toggle('hidden', !canScrollUp);
+        }
+
+        function scrollContentChatToTarget(target = 'latest-assistant', behavior = 'auto') {
+            const container = document.getElementById('content-chat-messages');
+            if (!container) return;
+
+            const bubbles = Array.from(container.querySelectorAll('.content-chat-bubble'));
+            if (!bubbles.length) {
+                updateContentChatScrollButton();
+                return;
+            }
+
+            let bubble = null;
+            if (target === 'first-assistant') {
+                bubble = container.querySelector('.content-chat-bubble.assistant') || bubbles[0];
+            } else if (target === 'latest-assistant') {
+                bubble = Array.from(container.querySelectorAll('.content-chat-bubble.assistant')).pop() || bubbles[bubbles.length - 1];
+            } else if (target === 'latest') {
+                bubble = bubbles[bubbles.length - 1];
+            }
+
+            scrollContentChatToBubble(container, bubble || bubbles[0], behavior);
+            window.setTimeout(updateContentChatScrollButton, 80);
+        }
+
+        function scrollContentChatToPreviousMessage() {
+            const container = document.getElementById('content-chat-messages');
+            if (!container) return;
+
+            const positions = Array.from(container.querySelectorAll('.content-chat-bubble'))
+                .map((bubble) => getChatBubbleScrollTop(container, bubble))
+                .sort((a, b) => a - b);
+            const targetTop = [...positions].reverse().find((top) => top < container.scrollTop - 12) || 0;
+            container.scrollTo({ top: targetTop, behavior: 'smooth' });
+            window.setTimeout(updateContentChatScrollButton, 220);
+        }
+
+        function setupContentChatScrollControls() {
+            const container = document.getElementById('content-chat-messages');
+            if (!container || container.dataset.scrollControlsReady === 'true') return;
+            container.dataset.scrollControlsReady = 'true';
+            container.addEventListener('scroll', updateContentChatScrollButton);
+            updateContentChatScrollButton();
+        }
+
+        function renderContentChatMessages(options = {}) {
             const container = document.getElementById('content-chat-messages');
             if (!container) return;
 
             container.innerHTML = '';
             contentChatMessages
                 .filter((message) => message.role !== 'system_event')
-                .forEach((message) => {
+                .forEach((message, index) => {
                     const bubble = document.createElement('div');
                     bubble.className = `content-chat-bubble ${message.role === 'user' ? 'user' : 'assistant'}`;
+                    bubble.dataset.chatMessageIndex = String(index);
                     if (message.pending) bubble.classList.add('pending');
 
                     const label = document.createElement('span');
@@ -2389,11 +2567,12 @@
                     if (message.role === 'assistant' && !message.pending && message.id) {
                         const actions = document.createElement('div');
                         actions.className = 'content-chat-actions';
-                        actions.appendChild(createChatActionButton('📋', 'Copiar', () => copyAssistantMessage(message.id)));
-                        actions.appendChild(createChatActionButton('↻', 'Gerar novamente', () => regenerateConversation()));
-                        actions.appendChild(createChatActionButton('+', 'Novo conteúdo', () => openNewContentModal()));
-                        actions.appendChild(createChatActionButton('👍', 'Like', () => likeAssistantMessage(message.id)));
-                        actions.appendChild(createChatActionButton('👎', 'Dislike', () => openFeedbackModal(message.id)));
+                        actions.appendChild(createChatActionButton('copy', 'Copiar', () => copyAssistantMessage(message.id)));
+                        actions.appendChild(createChatActionButton('like', 'Like', () => likeAssistantMessage(message.id)));
+                        actions.appendChild(createChatActionButton('dislike', 'Dislike', () => openFeedbackModal(message.id)));
+                        actions.appendChild(createChatActionButton('upload', 'Salvar histórico', () => saveContentChatHistory()));
+                        actions.appendChild(createChatActionButton('refresh', 'Gerar novamente', () => regenerateConversation()));
+                        actions.appendChild(createChatActionButton('more', 'Novo conteúdo', () => openNewContentModal()));
 
                         const actionStatus = document.createElement('span');
                         actionStatus.className = 'message-action-status';
@@ -2405,7 +2584,11 @@
                     container.appendChild(bubble);
                 });
 
-            container.scrollTop = container.scrollHeight;
+            if (options.scrollTo) {
+                scrollContentChatToTarget(options.scrollTo, options.behavior || 'auto');
+            } else {
+                updateContentChatScrollButton();
+            }
         }
 
         function openContentChat() {
@@ -2416,7 +2599,7 @@
             const panel = document.getElementById('content-chat-panel');
             const input = document.getElementById('content-chat-input');
             if (panel) panel.classList.remove('hidden');
-            renderContentChatMessages();
+            renderContentChatMessages({ scrollTo: 'latest-assistant' });
             if (input) input.focus();
         }
 
@@ -2424,11 +2607,13 @@
             const input = document.getElementById('content-chat-input');
             const sendButton = document.getElementById('btn-send-chat-adjustment');
             const saveButton = document.getElementById('btn-save-chat-history');
+            const newPlanningButton = document.getElementById('btn-create-new-planning');
             const status = document.getElementById('content-chat-status');
 
             if (input) input.disabled = Boolean(isBusy);
             if (sendButton) sendButton.disabled = Boolean(isBusy);
             if (saveButton) saveButton.disabled = Boolean(isBusy);
+            if (newPlanningButton) newPlanningButton.disabled = Boolean(isBusy);
             document.querySelectorAll('.content-chat-icon-btn').forEach((button) => {
                 button.disabled = Boolean(isBusy);
             });
@@ -2447,7 +2632,7 @@
             const userMessage = normalizeChatMessage({ role: 'user', text: adjustment, messageType: 'refinement' });
             const pendingMessage = normalizeChatMessage({ role: 'assistant', text: 'Ajustando a versão atual...', pending: true });
             contentChatMessages.push(userMessage, pendingMessage);
-            renderContentChatMessages();
+            renderContentChatMessages({ scrollTo: 'latest-assistant' });
 
             if (input) input.value = '';
             setContentChatBusy(true, 'Gerando ajuste...');
@@ -2472,18 +2657,18 @@
                 Object.assign(userMessage, normalizeChatMessage(data.userMessage || userMessage));
                 Object.assign(pendingMessage, normalizeChatMessage(data.assistantMessage || {
                     role: 'assistant',
-                    text: data.copy || 'Ajuste concluído.',
-                    messageType: 'refinement'
+                    text: data.copy || data.message || 'Ajuste concluído.',
+                    messageType: data.blocked ? 'system_notice' : 'refinement'
                 }));
                 pendingMessage.pending = false;
-                if (data.copy) setGeneratedContentSnapshot(data.copy);
-                renderContentChatMessages();
-                setContentChatBusy(false, 'Versão atualizada.');
+                if (data.copy && !data.blocked) setGeneratedContentSnapshot(data.copy);
+                renderContentChatMessages({ scrollTo: 'latest-assistant' });
+                setContentChatBusy(false, data.blocked ? '' : (data.copy ? 'Versão atualizada.' : ''));
             } catch (error) {
                 console.error(error);
                 pendingMessage.pending = false;
                 pendingMessage.text = error.message || 'Não foi possível ajustar agora.';
-                renderContentChatMessages();
+                renderContentChatMessages({ scrollTo: 'latest-assistant' });
                 setContentChatBusy(false, 'Erro ao ajustar.');
             }
         }
@@ -2500,7 +2685,7 @@
                 pending: true
             });
             contentChatMessages.push(pendingMessage);
-            renderContentChatMessages();
+            renderContentChatMessages({ scrollTo: 'latest-assistant' });
             setContentChatBusy(true, 'Gerando novamente...');
 
             try {
@@ -2526,13 +2711,13 @@
                 }));
                 pendingMessage.pending = false;
                 if (data.copy) setGeneratedContentSnapshot(data.copy);
-                renderContentChatMessages();
+                renderContentChatMessages({ scrollTo: 'latest-assistant' });
                 setContentChatBusy(false, 'Nova versão adicionada.');
             } catch (error) {
                 console.error(error);
                 pendingMessage.pending = false;
                 pendingMessage.text = error.message || 'Não foi possível gerar novamente.';
-                renderContentChatMessages();
+                renderContentChatMessages({ scrollTo: 'latest-assistant' });
                 setContentChatBusy(false, 'Erro ao gerar novamente.');
             }
         }
@@ -2576,7 +2761,7 @@
             if (button) button.innerText = 'Salvando...';
 
             try {
-                const resp = await fetch(`/api/content/conversations/${lastContentConversationId}/finish`, {
+                const resp = await fetch(`/api/content/conversations/${lastContentConversationId}/export`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -2613,6 +2798,34 @@
                 setContentChatBusy(false);
                 if (button) button.innerText = originalLabel;
             }
+        }
+
+        async function finishCurrentConversationForNewContent() {
+            if (!lastContentConversationId) return;
+
+            try {
+                const resp = await fetch(`/api/content/conversations/${lastContentConversationId}/finish`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await resp.json().catch(() => ({}));
+
+                if (!resp.ok && data && data.reauth && data.loginUrl) {
+                    window.location.href = data.loginUrl;
+                    return;
+                }
+
+                if (!resp.ok) {
+                    console.warn(data.error || 'Não foi possível finalizar a conversa atual.');
+                }
+            } catch (error) {
+                console.warn('Não foi possível finalizar a conversa atual:', error.message);
+            }
+        }
+
+        async function createNewPlanningFromChat() {
+            await finishCurrentConversationForNewContent();
+            resetPromptArea();
         }
 
         function showTransientButtonState(button, successLabel, originalLabel, timeout = 1400) {
@@ -2742,10 +2955,12 @@
             const chatMessages = document.getElementById('content-chat-messages');
             const chatStatus = document.getElementById('content-chat-status');
             const chatInput = document.getElementById('content-chat-input');
+            setPlanningChatMode(false);
             if (chatPanel) chatPanel.classList.add('hidden');
             if (chatMessages) chatMessages.innerHTML = '';
             if (chatStatus) chatStatus.innerText = '';
             if (chatInput) chatInput.value = '';
+            updateContentChatScrollButton();
             const promptInput = document.getElementById('prompt-input');
             if (promptInput) promptInput.focus();
         }
@@ -2870,11 +3085,16 @@
             const specialty = document.getElementById('ob-specialty').value.trim();
             const csResponsible = document.getElementById('ob-cs').value;
             const briefing = document.getElementById('ob-briefing').value.trim();
+            const contentNotes = document.getElementById('ob-content-notes').value.trim();
             const fileInput = document.getElementById('file-upload');
             const btn = document.getElementById('ob-submit-btn');
 
             if (!name || !specialty) {
                 return alert('Preencha pelo menos nome e especialidade antes de criar a estrutura.');
+            }
+
+            if (contentNotes.length > 2000) {
+                return alert('As observações devem ter no máximo 2000 caracteres.');
             }
 
             btn.innerText = 'Criando no Drive...';
@@ -2885,6 +3105,7 @@
             formData.append('specialty', specialty);
             formData.append('cs_responsible', csResponsible);
             formData.append('briefing', briefing);
+            formData.append('content_notes', contentNotes);
 
             Array.from(fileInput.files || []).forEach((file) => {
                 formData.append('files', file);
@@ -2905,6 +3126,7 @@
                 document.getElementById('ob-name').value = '';
                 document.getElementById('ob-specialty').value = '';
                 document.getElementById('ob-briefing').value = '';
+                document.getElementById('ob-content-notes').value = '';
                 if (fileInput) fileInput.value = '';
                 document.getElementById('file-list').innerHTML = '';
                 await loadDoctors();
@@ -3065,9 +3287,10 @@
                 e.preventDefault();
                 await downloadGeneratedDocx();
             });
-            if (newContentConfirm) newContentConfirm.addEventListener('click', (e) => {
+            if (newContentConfirm) newContentConfirm.addEventListener('click', async (e) => {
                 e.preventDefault();
                 closeNewContentModal();
+                await finishCurrentConversationForNewContent();
                 resetPromptArea();
             });
             if (btnCancel) btnCancel.addEventListener('click', (e) => { e.preventDefault(); closeFeedbackModal(); });
