@@ -896,7 +896,7 @@
                 tag.style.color = 'var(--primary)';
                 tag.style.textTransform = 'uppercase';
                 tag.style.letterSpacing = '0.05em';
-                tag.innerText = `#${t.medicalCategory || t.category || 'Tema'}`;
+                tag.innerText = `#${t.category || 'Tema'}`;
 
                 const title = document.createElement('div');
                 title.className = 'title';
@@ -905,12 +905,6 @@
                 tags.appendChild(tag);
                 top.appendChild(tags);
                 top.appendChild(title);
-                if (t.medicalCategory) {
-                    const categoryNote = document.createElement('div');
-                    categoryNote.className = 'trend-category-note';
-                    categoryNote.innerText = `Adaptar para ${t.medicalCategory} sem forçar tema.`;
-                    top.appendChild(categoryNote);
-                }
 
                 const actions = document.createElement('div');
                 actions.className = 'actions';
@@ -972,7 +966,7 @@
 
             if (normalizedQuery !== trendSearchState.query) {
                 const matches = currentTrends.reduce((acc, trend, index) => {
-                    const haystack = normalizeSearchText(`${trend.title || ''} ${trend.category || ''} ${trend.medicalCategory || ''}`);
+                    const haystack = normalizeSearchText(`${trend.title || ''} ${trend.category || ''}`);
                     if (haystack.includes(normalizedQuery)) acc.push(index);
                     return acc;
                 }, []);
@@ -2270,7 +2264,7 @@
         function useTrendTheme(trend) {
             const title = trend && trend.title ? trend.title : '';
             const url = trend && trend.url ? trend.url : '';
-            const medicalCategory = normalizeMedicalCategoryValue(trend?.medicalCategory || getSelectedTrendCategory());
+            const medicalCategory = normalizeMedicalCategoryValue(trend?.category);
             const prompt = `Crie um carrossel sobre: ${title}`;
 
             try {

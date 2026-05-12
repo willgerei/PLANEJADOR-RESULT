@@ -20,7 +20,7 @@ const { translateBatch } = require('./services/translationExecutionService');
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Trends Cache (30 min)
-let trendsCache = { data: null, timestamp: 0 };
+const trendsCacheByCategory = new Map();
 const CACHE_TTL = 30 * 60 * 1000;
 const MAX_TRENDS = 12;
 const MEDICAL_CONTEXT_CACHE_TTL = 20 * 60 * 1000;
@@ -133,15 +133,32 @@ function normalizeMedicalCategory(value) {
     return MEDICAL_CATEGORIES.find((category) => normalizeComparableText(category) === normalizedValue) || '';
 }
 
-function applyMedicalCategoryToTrends(trends, category) {
+function filterTrendsByMedicalCategory(trends, category) {
     const normalizedCategory = normalizeMedicalCategory(category);
     if (!normalizedCategory) return trends;
 
-    return (Array.isArray(trends) ? trends : []).map((trend) => ({
-        ...trend,
-        medicalCategory: normalizedCategory,
-        categoryAdvice: `Essa trend pode não ter boa aderência para ${normalizedCategory}. Use apenas como referência de formato se o tema não fizer sentido.`
-    }));
+    return (Array.isArray(trends) ? trends : []).filter(
+        (trend) => normalizeMedicalCategory(trend.category) === normalizedCategory
+    );
+}
+
+function getTrendsCache(category) {
+    const cacheKey = normalizeMedicalCategory(category) || 'Todas';
+    const cached = trendsCacheByCategory.get(cacheKey);
+    if (!cached || Date.now() - cached.timestamp > CACHE_TTL) {
+        trendsCacheByCategory.delete(cacheKey);
+        return null;
+    }
+
+    return cached.data;
+}
+
+function setTrendsCache(category, data) {
+    const cacheKey = normalizeMedicalCategory(category) || 'Todas';
+    trendsCacheByCategory.set(cacheKey, {
+        data,
+        timestamp: Date.now()
+    });
 }
 
 function getCachedMedicalContext(doctorId) {
@@ -2635,13 +2652,13 @@ app.post('/api/onboard-doctor', ensureAuthenticated, upload.array('files'), asyn
 
 // ── Trends Scraper Route (Tier 2 AI Orchestration) ─────────────────────────
 app.get('/api/trends', ensureAuthenticated, async (req, res) => {
-    const now = Date.now();
     const forceRefresh = ['1', 'true', 'yes'].includes(String(req.query.refresh || '').toLowerCase());
     const selectedCategory = normalizeMedicalCategory(req.query.category);
 
-    if (!forceRefresh && trendsCache.data && (now - trendsCache.timestamp < CACHE_TTL)) {
-        console.log('[Trends] Servindo do cache');
-        return res.json(applyMedicalCategoryToTrends(trendsCache.data, selectedCategory));
+    const cachedTrends = getTrendsCache(selectedCategory);
+    if (!forceRefresh && cachedTrends) {
+        console.log(`[Trends] Servindo do cache category=${selectedCategory || 'Todas'}`);
+        return res.json(cachedTrends);
     }
 
     try {
@@ -2735,6 +2752,42 @@ app.get('/api/trends', ensureAuthenticated, async (req, res) => {
                     { container: 'a[href*="/articles/"]', title: 'h2, h3, p' },
                     { container: 'article a', title: 'h2, h3' },
                     { container: '.card a', title: 'h2, h3' }
+                ]
+            },
+            {
+                url: 'https://www.abcheartfailure.org/',
+                category: 'Cardiologia',
+                selectors: [
+                    { container: 'article a', title: 'h1, h2, h3, .entry-title' },
+                    { container: '.post a', title: 'h1, h2, h3, .entry-title' },
+                    { container: 'a[href*="/"]', title: 'h1, h2, h3, .title' }
+                ]
+            },
+            {
+                url: 'https://ijcscardiol.org/#most-visited-list',
+                category: 'Cardiologia',
+                selectors: [
+                    { container: '#most-visited-list a', title: null, directAnchor: true },
+                    { container: '.most-visited a', title: null, directAnchor: true },
+                    { container: 'article a', title: 'h2, h3, .article-title' }
+                ]
+            },
+            {
+                url: 'https://pubmed.ncbi.nlm.nih.gov/?term=cardiology&filter=hum_ani.humans&filter=other.excludepreprints&filter=years.2025-2028&size=100',
+                category: 'Cardiologia',
+                selectors: [
+                    { container: 'a.docsum-title', title: null, directAnchor: true },
+                    { container: '.docsum-content a.docsum-title', title: null, directAnchor: true },
+                    { container: 'article.full-docsum', title: 'a.docsum-title' }
+                ]
+            },
+            {
+                url: 'https://pubmed.ncbi.nlm.nih.gov/?term=cardiology&filter=datesearch.y_1&filter=pubt.review&sort=date&size=100',
+                category: 'Cardiologia',
+                selectors: [
+                    { container: 'a.docsum-title', title: null, directAnchor: true },
+                    { container: '.docsum-content a.docsum-title', title: null, directAnchor: true },
+                    { container: 'article.full-docsum', title: 'a.docsum-title' }
                 ]
             }
         ];
@@ -2830,7 +2883,14 @@ app.get('/api/trends', ensureAuthenticated, async (req, res) => {
             }, new Map()).values()
         );
 
-        const selectedTrends = uniqueTrends.sort(() => 0.5 - Math.random()).slice(0, MAX_TRENDS);
+        const categoryScopedTrends = filterTrendsByMedicalCategory(uniqueTrends, selectedCategory);
+        if (!categoryScopedTrends.length) {
+            console.log(`[Trends] Nenhuma trend encontrada para category=${selectedCategory || 'Todas'}`);
+            setTrendsCache(selectedCategory, []);
+            return res.json([]);
+        }
+
+        const selectedTrends = categoryScopedTrends.sort(() => 0.5 - Math.random()).slice(0, MAX_TRENDS);
 
         // Tier 3 deterministic translation (no LLM): batch translate titles with Google Cloud Translation API.
         const originalTitles = selectedTrends.map((item) => item.title);
@@ -2850,8 +2910,8 @@ app.get('/api/trends', ensureAuthenticated, async (req, res) => {
         }
         console.log(`[Trends][Translation] requested=${stats.requested} translated=${stats.translated} fallback=${stats.fallback}`);
 
-        trendsCache = { data: translatedTrends, timestamp: now };
-        res.json(applyMedicalCategoryToTrends(translatedTrends, selectedCategory));
+        setTrendsCache(selectedCategory, translatedTrends);
+        res.json(translatedTrends);
 
     } catch (err) {
         console.error('[Trends] Falha ao raspar temas:', err.message);
