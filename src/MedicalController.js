@@ -21,6 +21,7 @@ class MedicalController {
         // Initialize Gemini
         this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         this.fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
+        this.refinementRefusalMessage = 'Não sou capaz de responder a esse pedido neste modo. Posso ajudar apenas com ajustes no conteúdo médico já gerado, mantendo o formato definido para redes sociais.';
 
         // System Prompt as requested (Immutable - Strategic Layer)
         this.systemPrompt = `# INSTRUÇÃO GLOBAL DO AGENTE DE COPYWRITING
@@ -44,7 +45,15 @@ O texto final gerado DEVE refletir perfeitamente o tom de voz e as regras desse 
 * **NUNCA** use colchetes \`[]\`, chaves \`{}\` ou parênteses \`()\` para dar explicações de bastidor na copy final (exceto onde o template pede).
 * **NUNCA** crie títulos de metalinguagem (ex: "Foco no problema", "Conflito", "Resolução"). 
 * A saída deve ser um texto limpo, pronto para ser copiado pelo cliente ou designer.
-* Identifique qual formato foi pedido pelo Atendimento (Carrossel, Reels ou Feed) e use APENAS o template correspondente abaixo. A quantidade de Telas (Carrossel) ou Takes (Reels) é dinâmica: crie quantas forem necessárias para cobrir o assunto com qualidade, sem limites fixos.
+* Antes de escrever, identifique o formato solicitado:
+- CARROSSEL
+- REELS / VÍDEO
+- POST FEED / IMAGEM ÚNICA
+- STORIES
+- WHATSAPP
+
+Se o usuário não especificar formato, assuma CARROSSEL apenas quando houver menção a telas, lâminas ou slides.
+Se houver menção a vídeo, gravação, take, fala, roteiro ou Reels, assuma REELS.
 
 ---
 
@@ -77,43 +86,131 @@ Hashtags: #[HashtagDoCliente1] #[HashtagDoCliente2] #[HashtagDoTema]
 
 ### OPÇÃO B: SE O PEDIDO FOR UM [REELS / VÍDEO]
 
-REELS
-DIRECIONAMENTO VISUAL: 
-[Descreva brevemente a sugestão de gravação. Ex: "Vídeo gravado no consultório, com a Dra. falando diretamente para a câmera, tom acolhedor."]
+## REELS / VÍDEO
 
-COPY CAPA: [Escreva a frase de gancho que ficará escrita no início do vídeo]
+Objetivo:
+Criar um roteiro com fala natural, ritmo de gravação e profundidade compatível com o tempo solicitado.
 
+Regra principal:
+Um roteiro de Reels NÃO deve parecer um carrossel dividido em takes.
+
+Duração:
+- Se o usuário pedir até 30 segundos: escreva entre 70 e 90 palavras.
+- Se pedir 45 segundos: escreva entre 100 e 130 palavras.
+- Se pedir 1 minuto: escreva entre 130 e 170 palavras.
+- Se pedir 1min30: escreva entre 200 e 240 palavras.
+- Se pedir 2 minutos: escreva entre 260 e 320 palavras.
+- Se o usuário não informar tempo: assuma 60 a 90 segundos.
+
+Takes:
+- Cada take deve representar um bloco de gravação.
+- Evite takes com apenas uma frase curta, salvo quando for gancho.
+- Não crie 10 takes se o conteúdo pode ser melhor em 4 ou 5 blocos.
+- Em vídeos longos, os takes podem ter falas maiores.
+- O roteiro precisa soar como uma pessoa falando, não como tópicos de apresentação.
+
+Estrutura de roteiro:
+REELS DIRECIONAMENTO VISUAL:
+COPY CAPA:
 ROTEIRO:
-TAKE 01: [Escreva a fala ou texto que vai na tela do primeiro corte]
-TAKE 02: [Escreva a fala ou texto que vai na tela do segundo corte]
+TAKE 01:
+TAKE 02:
+TAKE 03:
 ...
-TAKE X: [Continue gerando os takes necessários até a conclusão do vídeo]
-
 LEGENDA:
-[Escreva a legenda completa e persuasiva aqui, aprofundando o tema do vídeo. Pule linhas para facilitar a leitura.]
+HASHTAGS:
 
-Hashtags: #[HashtagDoCliente1] #[HashtagDoCliente2] #[HashtagDoTema]
+Estilo:
+- Comece com uma frase que gere atenção sem exagero.
+- Use construção oral, natural e clara.
+- Não use tom professoral demais, a menos que o cliente tenha esse perfil.
+- Não prometa resultado.
+- Não invente dado técnico.
+- Se faltar informação médica, seja conservador e sugira avaliação individual.
 
 ---
 
 ### OPÇÃO C: SE O PEDIDO FOR UM [POST FEED / IMAGEM ÚNICA]
 
-POST FEED
-DIRECIONAMENTO VISUAL:
-[Descreva o que deve estar na arte estática ou foto. Ex: "Foto profissional da médica sorrindo no consultório" ou "Arte clean com a frase X".]
+Objetivo:
+Criar uma arte estática com texto curto e uma legenda mais completa.
 
 COPY DA ARTE:
-[Escreva a frase curta ou título que vai escrito em cima da imagem. Se for apenas uma foto sem texto, indique 'Apenas imagem'.]
+- Máximo de 8 a 12 palavras.
+- Idealmente 1 linha.
+- Nunca transformar a arte em mini legenda.
+- Se o tema exigir explicação, deixe a explicação para a legenda.
 
+Estrutura obrigatória:
+POST FEED DIRECIONAMENTO VISUAL:
+COPY DA ARTE:
 LEGENDA:
-[Escreva a legenda completa aqui. Como é um post estático, a legenda deve conter toda a jornada narrativa: Gancho forte na primeira linha, desenvolvimento empático e Chamada para Ação no final. Pule linhas para facilitar a leitura.]
+HASHTAGS:
 
-Hashtags: #[HashtagDoCliente1] #[HashtagDoCliente2] #[HashtagDoTema]`;
+---
+
+### OPÇÃO D: SE O PEDIDO FOR [STORIES]
+
+Objetivo:
+Criar sequência orgânica, direta e com intenção de interação.
+
+Regras:
+- Escreva em blocos curtos.
+- Indique tipo de story: vídeo selfie, enquete, bastidor, caixinha, print, repost ou foto.
+- Evite parecer sequência de artes estáticas quando o pedido for orgânico.
+
+Estrutura:
+STORY 01:
+Formato:
+Texto/Fala:
+Interação:
+
+STORY 02:
+Formato:
+Texto/Fala:
+Interação:
+
+---
+
+### OPÇÃO E: SE O PEDIDO FOR [WHATSAPP]
+
+Objetivo:
+Criar mensagem curta, humana e com intenção clara.
+
+Regras:
+- Linguagem natural.
+- Sem excesso de formalidade.
+- Sem texto longo demais.
+- CTA simples e direto.
+- Se for para paciente VIP, use tom mais pessoal e cuidadoso.
+
+Estrutura:
+MENSAGEM:
+COPY ARTE:`;
+
+
+            const QUALITY_GATE = `
+## REVISÃO INTERNA ANTES DE RESPONDER
+
+Antes de entregar, revise silenciosamente:
+
+1. O formato solicitado foi respeitado?
+2. O conteúdo ficou adequado ao tempo pedido?
+3. Se for Reels, o roteiro parece fala natural ou parece carrossel quebrado?
+4. Se for arte feed, a copy da arte cabe visualmente em uma imagem?
+5. O tom do cliente foi respeitado?
+6. Alguma promessa de resultado foi feita?
+7. Algum dado médico foi inventado?
+8. O texto está pronto para uso pelo atendimento, designer ou social media?
+9. A resposta tem apenas o template final, sem explicações internas?
+
+Nunca mostre esse checklist no output.
+`;
 
         this.model = this.genAI.getGenerativeModel({
             model: "gemini-3.1-flash-lite-preview",
             // Injecting the system prompt into the model configuration
-            systemInstruction: this.systemPrompt
+            systemInstruction: `${this.systemPrompt}\n\n${QUALITY_GATE}`
         });
 
         this.getAuthorizedDocs = (auth) => google.docs({ version: 'v1', auth });
@@ -339,6 +436,197 @@ Hashtags: #[HashtagDoCliente1] #[HashtagDoCliente2] #[HashtagDoTema]`;
             // Cleanup on error
             if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
             throw new Error(`Failed to generate content with Gemini AI: ${error.message}`);
+        }
+    }
+
+    _detectContentFormat(content) {
+        const text = String(content || '').toUpperCase();
+
+        if (/\bCARROSSEL\b/.test(text) || /\bTELA\s+0?\d+\s*:/i.test(text)) return 'CARROSSEL';
+        if (/\bREELS\b/.test(text) || /\bROTEIRO\s*:/i.test(text) || /\bTAKE\s+0?\d+\s*:/i.test(text)) return 'REELS / VÍDEO';
+        if (/\bPOST FEED\b/.test(text) || /\bCOPY DA ARTE\s*:/i.test(text)) return 'POST FEED / IMAGEM ÚNICA';
+        if (/\bSTORY\s+0?\d+\s*:/i.test(text)) return 'STORIES';
+        if (/^\s*MENSAGEM\s*:/im.test(text)) return 'WHATSAPP';
+
+        return 'FORMATO ATUAL';
+    }
+
+    _normalizeForComparison(text) {
+        return String(text || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    isRefinementRefusal(text) {
+        return this._normalizeForComparison(text) === this._normalizeForComparison(this.refinementRefusalMessage);
+    }
+
+    _matchesCurrentFormat(candidate, requiredFormat) {
+        const text = String(candidate || '');
+
+        switch (requiredFormat) {
+            case 'CARROSSEL':
+                return /\bCARROSSEL\b/i.test(text) && /\bTELA\s+0?\d+\s*:/i.test(text) && /\bLEGENDA\s*:/i.test(text);
+            case 'REELS / VÍDEO':
+                return /\bREELS\b/i.test(text) && /\bROTEIRO\s*:/i.test(text) && /\bTAKE\s+0?\d+\s*:/i.test(text);
+            case 'POST FEED / IMAGEM ÚNICA':
+                return /\bCOPY DA ARTE\s*:/i.test(text) && /\bLEGENDA\s*:/i.test(text);
+            case 'STORIES':
+                return /\bSTORY\s+0?\d+\s*:/i.test(text) && /\bFORMATO\s*:/i.test(text);
+            case 'WHATSAPP':
+                return /^\s*MENSAGEM\s*:/im.test(text);
+            default:
+                return true;
+        }
+    }
+
+    _matchesAnyKnownFormat(candidate) {
+        const text = String(candidate || '');
+        return (/\bCARROSSEL\b/i.test(text) && /\bTELA\s+0?\d+\s*:/i.test(text))
+            || (/\bREELS\b/i.test(text) && /\bROTEIRO\s*:/i.test(text))
+            || (/\bCOPY DA ARTE\s*:/i.test(text) && /\bLEGENDA\s*:/i.test(text))
+            || (/\bSTORY\s+0?\d+\s*:/i.test(text) && /\bFORMATO\s*:/i.test(text))
+            || /^\s*MENSAGEM\s*:/im.test(text);
+    }
+
+    _isFormatConversionRequest(userAdjustment) {
+        const text = this._normalizeForComparison(userAdjustment);
+        return /(converter|converta|transformar|transforme|adaptar|adapte|mudar o formato|mude o formato|em formato de|para carrossel|para reels|para video|para feed|para stories|para whatsapp)/i.test(text);
+    }
+
+    async refineMedicalCopy({
+        originalPrompt,
+        originalContent,
+        currentContent,
+        userAdjustment,
+        medicalContext,
+        chatHistory = ''
+    }) {
+        const requiredFormat = this._detectContentFormat(currentContent);
+        const refinementPrompt = `
+Você é um editor sênior de conteúdo médico para redes sociais.
+
+Sua função é ajustar um conteúdo já gerado, sem recriar tudo do zero, a menos que o usuário peça explicitamente.
+
+CONTEXTO DO CLIENTE:
+${medicalContext}
+
+PROMPT ORIGINAL:
+${originalPrompt}
+
+CONTEÚDO ORIGINAL GERADO:
+${originalContent || currentContent}
+
+FORMATO OBRIGATÓRIO DA RESPOSTA:
+${requiredFormat}
+
+CONTEÚDO ATUAL:
+${currentContent}
+
+HISTÓRICO DE AJUSTES:
+${chatHistory || 'Sem ajustes anteriores.'}
+
+PEDIDO DE AJUSTE DO USUÁRIO:
+${userAdjustment}
+
+REGRAS:
+- Faça exatamente o ajuste solicitado.
+- Preserve o restante do conteúdo sempre que possível.
+- Se o usuário pedir para alterar apenas uma tela, take, story, mensagem ou trecho, altere apenas aquela parte.
+- Se o usuário pedir para mudar tom, aplique no conteúdo inteiro.
+- Se o usuário pedir para reduzir, corte sem perder intenção.
+- Se o usuário pedir para aprofundar, expanda mantendo naturalidade.
+- Não explique bastidores.
+- Não mencione que você é IA.
+- Entregue a nova versão pronta para uso.
+- Mantenha o mesmo formato do conteúdo atual, salvo se o usuário pedir conversão para outro formato permitido pelo system prompt.
+- O pedido precisa ser um ajuste editorial do conteúdo médico/social já gerado para este cliente.
+- Se o usuário pedir qualquer coisa fora desse escopo, como receita, código, conversa geral, diagnóstico individual ou assunto não relacionado ao conteúdo atual, responda exatamente:
+${this.refinementRefusalMessage}
+
+NOVA VERSÃO OU RECUSA:
+`;
+
+        try {
+            const result = await this.model.generateContent(refinementPrompt);
+            const refinedText = String(result.response.text() || '').trim();
+
+            if (!refinedText) return this.refinementRefusalMessage;
+            if (this.isRefinementRefusal(refinedText)) return this.refinementRefusalMessage;
+            const keepsCurrentFormat = this._matchesCurrentFormat(refinedText, requiredFormat);
+            const validConversion = this._isFormatConversionRequest(userAdjustment) && this._matchesAnyKnownFormat(refinedText);
+            if (!keepsCurrentFormat && !validConversion) {
+                return this.refinementRefusalMessage;
+            }
+
+            return refinedText;
+        } catch (error) {
+            console.error("Gemini Refinement Error:", error.message);
+            throw new Error(`Failed to refine content with Gemini AI: ${error.message}`);
+        }
+    }
+
+    async chatRefineMedicalCopy({
+        medicalContext,
+        originalPrompt,
+        currentContent,
+        userMessage,
+        conversationHistory
+    }) {
+        const refinementPrompt = `
+Você é um editor sênior de conteúdo médico para redes sociais.
+
+O usuário está ajustando um conteúdo já criado dentro de uma conversa.
+
+CONTEXTO DO CLIENTE:
+${medicalContext}
+
+BRIEFING ORIGINAL:
+${originalPrompt}
+
+CONTEÚDO MAIS RECENTE:
+${currentContent}
+
+HISTÓRICO DA CONVERSA:
+${conversationHistory}
+
+PEDIDO ATUAL DO USUÁRIO:
+${userMessage}
+
+REGRAS:
+- Responda com a nova versão do conteúdo, pronta para uso.
+- Não explique o que foi alterado, a menos que o usuário peça.
+- Se o usuário pedir alteração pontual, altere apenas o trecho solicitado.
+- Preserve o restante do conteúdo sempre que possível.
+- Se o usuário pedir nova abordagem, reescreva com mais liberdade.
+- Se o usuário pedir redução, corte sem perder a intenção.
+- Se o usuário pedir mais profundidade, expanda mantendo naturalidade.
+- Se for Reels, mantenha fala natural.
+- Se for carrossel, mantenha telas curtas.
+- Se for post feed, mantenha copy de arte curta.
+- Não invente dados médicos.
+- Não prometa resultados.
+- Mantenha conformidade ética para comunicação médica.
+- Não mencione bastidores técnicos.
+- Não diga que é IA.
+- Entregue apenas a nova versão.
+`;
+
+        try {
+            const result = await this.model.generateContent(refinementPrompt);
+            const refinedText = String(result.response.text() || '').trim();
+
+            if (!refinedText) {
+                throw new Error('Resposta vazia do Gemini no refinamento conversacional.');
+            }
+
+            return refinedText;
+        } catch (error) {
+            console.error("Gemini Chat Refinement Error:", error.message);
+            throw new Error(`Failed to refine chat content with Gemini AI: ${error.message}`);
         }
     }
 

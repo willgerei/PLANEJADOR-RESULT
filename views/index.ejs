@@ -250,21 +250,35 @@
 
                     <!-- Result Zone -->
                     <div id="step-result" class="hidden" style="margin-top:40px;">
-                        <div style="background:var(--bg-hover); padding:24px; border-radius:18px; line-height:1.7; white-space:pre-wrap; color:var(--text-main);"
-                            id="generated-content"></div>
+                        <div id="generated-content" class="generated-content-snapshot" aria-hidden="true"></div>
                         <div class="planning-result-actions">
                             <button id="btn-download" class="btn-pill btn-pill-dark"
                                 onclick="downloadGeneratedDocx()">Download .docx</button>
-                            <button id="btn-copy-content" class="btn-pill" style="border:1px solid var(--border-soft)"
-                                onclick="copyGeneratedContent()">Copiar conteúdo</button>
-                            <button id="btn-regenerate" class="btn-pill" style="border:1px solid var(--border-soft)"
-                                onclick="regenerateCopy()">Gerar novamente</button>
-                            <button id="btn-new-content" class="btn-pill" style="border:1px solid var(--border-soft)">
-                                Novo conteúdo
+                            <button id="btn-save-chat-history" class="btn-pill" style="border:1px solid var(--border-soft)"
+                                type="button" onclick="saveContentChatHistory()">
+                                Salvar histórico
                             </button>
-                            <button id="btn-review" class="btn-pill" style="border:1px solid var(--border-soft)">
-                                Revisar
-                            </button>
+                        </div>
+
+                        <div id="content-chat-panel" class="content-chat-panel">
+                            <div class="content-chat-header">
+                                <div>
+                                    <span class="content-chat-kicker">Modo chat</span>
+                                    <h3>Ajustes do conteúdo</h3>
+                                </div>
+                            </div>
+
+                            <div id="content-chat-messages" class="content-chat-messages" aria-live="polite"></div>
+
+                            <div class="content-chat-compose">
+                                <textarea id="content-chat-input" rows="3"
+                                    placeholder="Digite um ajuste para este conteúdo..."></textarea>
+                                <button id="btn-send-chat-adjustment" class="btn-pill btn-pill-dark" type="button"
+                                    onclick="sendContentChatAdjustment()">
+                                    Enviar ajuste
+                                </button>
+                            </div>
+                            <div id="content-chat-status" class="content-chat-status" aria-live="polite"></div>
                         </div>
                     </div>
                 </div>
@@ -664,6 +678,10 @@
         let lastGeneratedDoctorId = null;
         let lastGeneratedCopy = '';
         let lastGenerationRequest = null;
+        let lastContentSessionId = null;
+        let lastContentConversationId = null;
+        let contentChatMessages = [];
+        let activeFeedbackMessageId = null;
         let selectedTrend = null;
         const TRENDS_TOTAL = 12;
         let currentTrends = [];
@@ -2198,13 +2216,14 @@
         }
 
         function getResultActionButtons() {
-            return [
+            const fixedButtons = [
                 document.getElementById('btn-download'),
-                document.getElementById('btn-copy-content'),
-                document.getElementById('btn-regenerate'),
-                document.getElementById('btn-new-content'),
-                document.getElementById('btn-review')
+                document.getElementById('btn-send-chat-adjustment'),
+                document.getElementById('btn-save-chat-history')
             ].filter(Boolean);
+            const messageButtons = Array.from(document.querySelectorAll('.content-chat-icon-btn'));
+
+            return [...fixedButtons, ...messageButtons];
         }
 
         function setPlanningLoadingState(isLoading, message) {
@@ -2224,13 +2243,376 @@
             });
         }
 
-        function applyGeneratedCopy(copy, request) {
+        function normalizeChatMessage(message = {}) {
+            return {
+                id: message.id ? String(message.id) : null,
+                role: message.role || 'assistant',
+                text: String(message.text ?? message.message ?? ''),
+                messageType: message.messageType || message.message_type || 'content',
+                pending: Boolean(message.pending)
+            };
+        }
+
+        function findChatMessage(messageId) {
+            const normalizedId = String(messageId || '');
+            return contentChatMessages.find((message) => String(message.id || '') === normalizedId);
+        }
+
+        function setGeneratedContentSnapshot(copy) {
+            lastGeneratedCopy = String(copy || '');
+            const output = document.getElementById('generated-content');
+            if (output) output.innerText = lastGeneratedCopy;
+        }
+
+        function applyGeneratedCopy(copy, request, sessionIdOrOptions = null) {
+            const options = sessionIdOrOptions && typeof sessionIdOrOptions === 'object'
+                ? sessionIdOrOptions
+                : { sessionId: sessionIdOrOptions };
             const baseRequest = normalizeGenerationRequest(request);
+            const assistantMessage = options.assistantMessage || {
+                id: options.messageId || null,
+                role: 'assistant',
+                message: copy,
+                messageType: 'initial_generation'
+            };
+
             lastGeneratedDoctorId = baseRequest.doctorId;
             lastGenerationRequest = baseRequest;
-            lastGeneratedCopy = copy;
-            document.getElementById('generated-content').innerText = copy;
-            document.getElementById('step-result').classList.remove('hidden');
+            setGeneratedContentSnapshot(copy);
+            if (options.sessionId) lastContentSessionId = String(options.sessionId);
+            if (options.conversationId) lastContentConversationId = String(options.conversationId);
+
+            contentChatMessages = [normalizeChatMessage(assistantMessage)];
+
+            const stepResult = document.getElementById('step-result');
+            const panel = document.getElementById('content-chat-panel');
+            const input = document.getElementById('content-chat-input');
+            const status = document.getElementById('content-chat-status');
+
+            if (stepResult) stepResult.classList.remove('hidden');
+            if (panel) panel.classList.remove('hidden');
+            if (input) input.value = '';
+            if (status) status.innerText = '';
+            renderContentChatMessages();
+        }
+
+        function resetContentChatPanel() {
+            contentChatMessages = [];
+            const panel = document.getElementById('content-chat-panel');
+            const input = document.getElementById('content-chat-input');
+            const status = document.getElementById('content-chat-status');
+
+            if (panel) panel.classList.add('hidden');
+            if (input) input.value = '';
+            if (status) status.innerText = '';
+            renderContentChatMessages();
+        }
+
+        function createChatActionButton(icon, label, handler) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'content-chat-icon-btn';
+            button.setAttribute('aria-label', label);
+            button.title = label;
+            button.innerText = icon;
+            button.addEventListener('click', handler);
+            return button;
+        }
+
+        function setMessageActionStatus(messageId, text, isError = false) {
+            const status = document.querySelector(`[data-action-status-for="${messageId}"]`);
+            if (!status) return;
+
+            status.innerText = text || '';
+            status.classList.toggle('error', Boolean(isError));
+            if (text) {
+                window.setTimeout(() => {
+                    if (status.innerText === text) status.innerText = '';
+                }, 2200);
+            }
+        }
+
+        async function writeClipboardText(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+                return;
+            }
+
+            const helper = document.createElement('textarea');
+            helper.value = text;
+            helper.setAttribute('readonly', '');
+            helper.style.position = 'absolute';
+            helper.style.left = '-9999px';
+            document.body.appendChild(helper);
+            helper.select();
+            document.execCommand('copy');
+            helper.remove();
+        }
+
+        async function copyAssistantMessage(messageId) {
+            const message = findChatMessage(messageId);
+            const copyText = message ? message.text.trim() : '';
+            if (!copyText) return;
+
+            try {
+                await writeClipboardText(copyText);
+                setMessageActionStatus(messageId, 'Copiado');
+            } catch (error) {
+                console.error(error);
+                setMessageActionStatus(messageId, 'Erro ao copiar', true);
+            }
+        }
+
+        function renderContentChatMessages() {
+            const container = document.getElementById('content-chat-messages');
+            if (!container) return;
+
+            container.innerHTML = '';
+            contentChatMessages
+                .filter((message) => message.role !== 'system_event')
+                .forEach((message) => {
+                    const bubble = document.createElement('div');
+                    bubble.className = `content-chat-bubble ${message.role === 'user' ? 'user' : 'assistant'}`;
+                    if (message.pending) bubble.classList.add('pending');
+
+                    const label = document.createElement('span');
+                    label.className = 'content-chat-label';
+                    label.innerText = message.role === 'user' ? 'Você' : 'IA';
+
+                    const body = document.createElement('div');
+                    body.className = 'content-chat-text';
+                    body.innerText = message.text;
+
+                    bubble.appendChild(label);
+                    bubble.appendChild(body);
+
+                    if (message.role === 'assistant' && !message.pending && message.id) {
+                        const actions = document.createElement('div');
+                        actions.className = 'content-chat-actions';
+                        actions.appendChild(createChatActionButton('📋', 'Copiar', () => copyAssistantMessage(message.id)));
+                        actions.appendChild(createChatActionButton('↻', 'Gerar novamente', () => regenerateConversation()));
+                        actions.appendChild(createChatActionButton('+', 'Novo conteúdo', () => openNewContentModal()));
+                        actions.appendChild(createChatActionButton('👍', 'Like', () => likeAssistantMessage(message.id)));
+                        actions.appendChild(createChatActionButton('👎', 'Dislike', () => openFeedbackModal(message.id)));
+
+                        const actionStatus = document.createElement('span');
+                        actionStatus.className = 'message-action-status';
+                        actionStatus.dataset.actionStatusFor = message.id;
+                        actions.appendChild(actionStatus);
+                        bubble.appendChild(actions);
+                    }
+
+                    container.appendChild(bubble);
+                });
+
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function openContentChat() {
+            if (!lastContentConversationId || !lastGeneratedCopy) {
+                return alert('Gere um conteúdo primeiro para abrir o modo chat.');
+            }
+
+            const panel = document.getElementById('content-chat-panel');
+            const input = document.getElementById('content-chat-input');
+            if (panel) panel.classList.remove('hidden');
+            renderContentChatMessages();
+            if (input) input.focus();
+        }
+
+        function setContentChatBusy(isBusy, statusMessage) {
+            const input = document.getElementById('content-chat-input');
+            const sendButton = document.getElementById('btn-send-chat-adjustment');
+            const saveButton = document.getElementById('btn-save-chat-history');
+            const status = document.getElementById('content-chat-status');
+
+            if (input) input.disabled = Boolean(isBusy);
+            if (sendButton) sendButton.disabled = Boolean(isBusy);
+            if (saveButton) saveButton.disabled = Boolean(isBusy);
+            document.querySelectorAll('.content-chat-icon-btn').forEach((button) => {
+                button.disabled = Boolean(isBusy);
+            });
+            if (status && typeof statusMessage === 'string') status.innerText = statusMessage;
+        }
+
+        async function sendContentChatAdjustment() {
+            if (!lastContentConversationId) {
+                return alert('Gere um conteúdo primeiro para enviar ajustes.');
+            }
+
+            const input = document.getElementById('content-chat-input');
+            const adjustment = input ? input.value.trim() : '';
+            if (!adjustment) return alert('Digite o ajuste antes de enviar.');
+
+            const userMessage = normalizeChatMessage({ role: 'user', text: adjustment, messageType: 'refinement' });
+            const pendingMessage = normalizeChatMessage({ role: 'assistant', text: 'Ajustando a versão atual...', pending: true });
+            contentChatMessages.push(userMessage, pendingMessage);
+            renderContentChatMessages();
+
+            if (input) input.value = '';
+            setContentChatBusy(true, 'Gerando ajuste...');
+
+            try {
+                const resp = await fetch(`/api/content/conversations/${lastContentConversationId}/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userMessage: adjustment })
+                });
+                const data = await resp.json().catch(() => ({}));
+
+                if (!resp.ok && data && data.reauth && data.loginUrl) {
+                    window.location.href = data.loginUrl;
+                    return;
+                }
+
+                if (!resp.ok) {
+                    throw new Error(data.error || 'Falha ao ajustar o conteúdo.');
+                }
+
+                Object.assign(userMessage, normalizeChatMessage(data.userMessage || userMessage));
+                Object.assign(pendingMessage, normalizeChatMessage(data.assistantMessage || {
+                    role: 'assistant',
+                    text: data.copy || 'Ajuste concluído.',
+                    messageType: 'refinement'
+                }));
+                pendingMessage.pending = false;
+                if (data.copy) setGeneratedContentSnapshot(data.copy);
+                renderContentChatMessages();
+                setContentChatBusy(false, 'Versão atualizada.');
+            } catch (error) {
+                console.error(error);
+                pendingMessage.pending = false;
+                pendingMessage.text = error.message || 'Não foi possível ajustar agora.';
+                renderContentChatMessages();
+                setContentChatBusy(false, 'Erro ao ajustar.');
+            }
+        }
+
+        async function regenerateConversation() {
+            if (!lastContentConversationId) {
+                return regenerateCopy();
+            }
+
+            const pendingMessage = normalizeChatMessage({
+                role: 'assistant',
+                text: 'Gerando uma nova versão...',
+                messageType: 'regeneration',
+                pending: true
+            });
+            contentChatMessages.push(pendingMessage);
+            renderContentChatMessages();
+            setContentChatBusy(true, 'Gerando novamente...');
+
+            try {
+                const resp = await fetch(`/api/content/conversations/${lastContentConversationId}/regenerate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await resp.json().catch(() => ({}));
+
+                if (!resp.ok && data && data.reauth && data.loginUrl) {
+                    window.location.href = data.loginUrl;
+                    return;
+                }
+
+                if (!resp.ok) {
+                    throw new Error(data.error || 'Falha ao gerar novamente.');
+                }
+
+                Object.assign(pendingMessage, normalizeChatMessage(data.assistantMessage || {
+                    role: 'assistant',
+                    text: data.copy || 'Nova versão gerada.',
+                    messageType: 'regeneration'
+                }));
+                pendingMessage.pending = false;
+                if (data.copy) setGeneratedContentSnapshot(data.copy);
+                renderContentChatMessages();
+                setContentChatBusy(false, 'Nova versão adicionada.');
+            } catch (error) {
+                console.error(error);
+                pendingMessage.pending = false;
+                pendingMessage.text = error.message || 'Não foi possível gerar novamente.';
+                renderContentChatMessages();
+                setContentChatBusy(false, 'Erro ao gerar novamente.');
+            }
+        }
+
+        async function likeAssistantMessage(messageId) {
+            setMessageActionStatus(messageId, 'Salvando...');
+
+            try {
+                const resp = await fetch(`/api/content/messages/${messageId}/like`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await resp.json().catch(() => ({}));
+
+                if (!resp.ok && data && data.reauth && data.loginUrl) {
+                    window.location.href = data.loginUrl;
+                    return;
+                }
+
+                if (!resp.ok) {
+                    throw new Error(data.error || 'Falha ao salvar like.');
+                }
+
+                setMessageActionStatus(messageId, data.historySaved === false ? 'Like salvo' : 'Like salvo');
+                const status = document.getElementById('content-chat-status');
+                if (status && data.historySaved === false) status.innerText = data.historyError || 'Feedback salvo; histórico mantido no banco.';
+            } catch (error) {
+                console.error(error);
+                setMessageActionStatus(messageId, error.message || 'Erro no like', true);
+            }
+        }
+
+        async function saveContentChatHistory() {
+            if (!lastContentConversationId) {
+                return alert('Gere um conteúdo primeiro para salvar o histórico.');
+            }
+
+            const button = document.getElementById('btn-save-chat-history');
+            const originalLabel = button ? button.innerText : 'Salvar histórico';
+            setContentChatBusy(true, 'Salvando histórico no Drive...');
+            if (button) button.innerText = 'Salvando...';
+
+            try {
+                const resp = await fetch(`/api/content/conversations/${lastContentConversationId}/finish`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await resp.json().catch(() => ({}));
+
+                if (!resp.ok && data && data.reauth && data.loginUrl) {
+                    window.location.href = data.loginUrl;
+                    return;
+                }
+
+                if (!resp.ok) {
+                    throw new Error(data.error || 'Falha ao salvar histórico no Drive.');
+                }
+
+                const status = document.getElementById('content-chat-status');
+                if (status) {
+                    status.innerHTML = '';
+                    if (data.driveUrl) {
+                        const link = document.createElement('a');
+                        link.href = data.driveUrl;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                        link.innerText = 'Histórico salvo no Drive. Abrir arquivo.';
+                        status.appendChild(link);
+                    } else {
+                        status.innerText = data.historyError || data.message || 'Histórico mantido no banco local.';
+                    }
+                }
+            } catch (error) {
+                console.error(error);
+                const status = document.getElementById('content-chat-status');
+                if (status) status.innerText = error.message || 'Erro ao salvar histórico.';
+            } finally {
+                setContentChatBusy(false);
+                if (button) button.innerText = originalLabel;
+            }
         }
 
         function showTransientButtonState(button, successLabel, originalLabel, timeout = 1400) {
@@ -2255,7 +2637,7 @@
             setPlanningLoadingState(true, loadingMessage);
 
             try {
-                const res = await fetch('/api/orchestrate', {
+                const res = await fetch('/api/content/conversations', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -2271,7 +2653,11 @@
                     throw new Error(data.error || 'Erro na geração.');
                 }
 
-                applyGeneratedCopy(data.copy, baseRequest);
+                applyGeneratedCopy(data.copy, baseRequest, {
+                    sessionId: data.sessionId,
+                    conversationId: data.conversationId,
+                    assistantMessage: data.assistantMessage
+                });
                 return data.copy;
             } finally {
                 setPlanningLoadingState(false, 'Sincronizando Drive & Gemini...');
@@ -2290,6 +2676,10 @@
         }
 
         async function regenerateCopy() {
+            if (lastContentConversationId) {
+                return regenerateConversation();
+            }
+
             if (!lastGenerationRequest || !lastGeneratedCopy) {
                 return alert('Gere um conteúdo primeiro para criar uma nova variação.');
             }
@@ -2344,6 +2734,18 @@
             lastGeneratedDoctorId = null;
             lastGeneratedCopy = '';
             lastGenerationRequest = null;
+            lastContentSessionId = null;
+            lastContentConversationId = null;
+            activeFeedbackMessageId = null;
+            contentChatMessages = [];
+            const chatPanel = document.getElementById('content-chat-panel');
+            const chatMessages = document.getElementById('content-chat-messages');
+            const chatStatus = document.getElementById('content-chat-status');
+            const chatInput = document.getElementById('content-chat-input');
+            if (chatPanel) chatPanel.classList.add('hidden');
+            if (chatMessages) chatMessages.innerHTML = '';
+            if (chatStatus) chatStatus.innerText = '';
+            if (chatInput) chatInput.value = '';
             const promptInput = document.getElementById('prompt-input');
             if (promptInput) promptInput.focus();
         }
@@ -2580,7 +2982,7 @@
     <textarea id="feedback-modal-text" placeholder="Ex: reduzir o tom promocional; focar em benefícios clínicos..."></textarea>
     <div class="feedback-actions">
       <button id="feedback-modal-cancel" class="feedback-btn-cancel" type="button">Cancelar</button>
-      <button id="feedback-modal-send" class="feedback-btn-send" type="button">Enviar feedback e gerar novamente</button>
+      <button id="feedback-modal-send" class="feedback-btn-send" type="button">Enviar feedback</button>
       <div id="feedback-modal-status" class="status">Enviando...</div>
     </div>
   </div>
@@ -2609,11 +3011,12 @@
         }
 
         // Client-side modal logic and submit
-        function openFeedbackModal() {
+        function openFeedbackModal(messageId = null) {
             const overlay = document.getElementById('feedback-modal-overlay');
             const textarea = document.getElementById('feedback-modal-text');
             if (!overlay || !textarea) return;
 
+            activeFeedbackMessageId = messageId ? String(messageId) : null;
             resetFeedbackModalState();
             overlay.style.display = 'flex';
             overlay.setAttribute('aria-hidden', 'false');
@@ -2624,6 +3027,7 @@
             if (!overlay) return;
             overlay.style.display = 'none';
             overlay.setAttribute('aria-hidden', 'true');
+            activeFeedbackMessageId = null;
             resetFeedbackModalState();
         }
 
@@ -2631,7 +3035,7 @@
         document.addEventListener('click', (ev) => {
             const el = ev.target.closest && ev.target.closest('button, a');
             if (!el) return;
-            const isReviewBtn = el.id === 'btn-review' || (el.innerText && el.innerText.trim().toLowerCase().includes('revisar'));
+            const isReviewBtn = el.id === 'btn-review';
             if (!isReviewBtn) return;
             ev.preventDefault(); ev.stopPropagation(); openFeedbackModal();
         });
@@ -2674,66 +3078,59 @@
                     e.preventDefault();
                     const statusEl = document.getElementById('feedback-modal-status');
                     const ta = document.getElementById('feedback-modal-text');
-                    const doctorId = lastGenerationRequest?.doctorId || lastGeneratedDoctorId || null;
-                    if (!doctorId) return alert('Selecione um médico antes de enviar feedback.');
-                    if (!lastGenerationRequest || !lastGeneratedCopy) {
-                        return alert('Gere um conteúdo antes de enviar feedback com regeneração.');
-                    }
                     const text = ta.value.trim(); if (!text) return alert('Digite o feedback antes de enviar.');
 
-                    if (statusEl) { statusEl.style.display = 'inline-block'; statusEl.innerText = 'Salvando feedback e gerando novamente...'; }
+                    if (statusEl) { statusEl.style.display = 'inline-block'; statusEl.innerText = 'Salvando feedback...'; }
                     btnSend.disabled = true;
                     ta.disabled = true;
-                    setPlanningLoadingState(true, 'Salvando feedback e gerando novamente...');
 
                     try {
-                        const resp = await fetch('/api/feedback', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                doctorId,
-                                feedbackText: text,
-                                regenerateRequest: {
-                                    ...lastGenerationRequest,
-                                    previousCopy: lastGeneratedCopy
-                                }
-                            })
-                        });
-                        const data = await resp.json();
+                        const dislikeMessageId = activeFeedbackMessageId;
+                        let resp;
+
+                        if (dislikeMessageId) {
+                            resp = await fetch(`/api/content/messages/${dislikeMessageId}/dislike`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ feedbackText: text })
+                            });
+                        } else {
+                            const doctorId = lastGenerationRequest?.doctorId || lastGeneratedDoctorId || null;
+                            if (!doctorId) throw new Error('Selecione um médico antes de enviar feedback.');
+
+                            resp = await fetch('/api/feedback', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ doctorId, feedbackText: text })
+                            });
+                        }
+
+                        const data = await resp.json().catch(() => ({}));
                         if (!resp.ok && data && data.reauth && data.loginUrl) {
                             if (statusEl) statusEl.innerText = 'Atualizando permissões do Google...';
                             window.location.href = data.loginUrl;
                             return;
                         }
 
-                        if (resp.ok && data.copy) {
-                            applyGeneratedCopy(data.copy, lastGenerationRequest);
-                            if (statusEl) { statusEl.innerText = 'Feedback enviado e nova versão gerada ✓'; }
-                            window.setTimeout(() => {
-                                closeFeedbackModal();
-                            }, 900);
-                            return;
+                        if (!resp.ok) {
+                            throw new Error(data.error || 'Falha ao enviar feedback.');
                         }
 
-                        if (!resp.ok && data && data.feedbackSaved) {
-                            if (statusEl) {
-                                statusEl.innerText = data.error || 'Feedback salvo, mas não foi possível gerar novamente.';
+                        if (dislikeMessageId) {
+                            setMessageActionStatus(dislikeMessageId, 'Dislike salvo');
+                            const chatStatus = document.getElementById('content-chat-status');
+                            if (chatStatus && data.historySaved === false) {
+                                chatStatus.innerText = data.historyError || 'Feedback salvo; histórico mantido no banco.';
                             }
-                            window.setTimeout(() => {
-                                closeFeedbackModal();
-                                alert(data.error || 'Feedback salvo, mas não foi possível gerar novamente. Use "Gerar novamente" para tentar de novo.');
-                            }, 1200);
-                        } else {
-                            const err = data && data.error ? data.error : 'Falha ao enviar';
-                            if (statusEl) { statusEl.innerText = err; }
-                            ta.disabled = false;
-                            btnSend.disabled = false;
                         }
+                        if (statusEl) statusEl.innerText = 'Feedback salvo.';
+                        window.setTimeout(() => {
+                            closeFeedbackModal();
+                        }, 900);
                     } catch (err) {
-                        if (statusEl) statusEl.innerText = 'Erro de rede';
+                        if (statusEl) statusEl.innerText = err.message || 'Erro de rede';
                         ta.disabled = false;
                         btnSend.disabled = false;
-                    } finally {
-                        setPlanningLoadingState(false, 'Sincronizando Drive & Gemini...');
                     }
                 });
             }

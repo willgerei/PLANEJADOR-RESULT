@@ -129,6 +129,92 @@ function initializeUsersTable() {
     });
 }
 
+function initializeContentChatTables() {
+    db.serialize(() => {
+        db.run(`
+            CREATE TABLE IF NOT EXISTS content_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                doctor_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                original_prompt TEXT NOT NULL,
+                original_content TEXT NOT NULL,
+                current_content TEXT NOT NULL,
+                trend_url TEXT,
+                trend_title TEXT,
+                drive_file_id TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `, (err) => {
+            if (err) {
+                console.error("[SQLite] Falha ao garantir a tabela 'content_sessions':", err.message);
+                return;
+            }
+            console.log("[SQLite] Tabela 'content_sessions' pronta para uso.");
+        });
+
+        db.run(`
+            CREATE TABLE IF NOT EXISTS content_chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                message TEXT NOT NULL,
+                content_snapshot TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `, (err) => {
+            if (err) {
+                console.error("[SQLite] Falha ao garantir a tabela 'content_chat_messages':", err.message);
+                return;
+            }
+            console.log("[SQLite] Tabela 'content_chat_messages' pronta para uso.");
+        });
+
+        db.run(`CREATE INDEX IF NOT EXISTS idx_content_sessions_user ON content_sessions(user_id, updated_at)`);
+        db.run(`CREATE INDEX IF NOT EXISTS idx_content_chat_messages_session ON content_chat_messages(session_id, created_at)`);
+
+        db.run(`
+            CREATE TABLE IF NOT EXISTS content_conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                doctor_id INTEGER,
+                user_id INTEGER,
+                status TEXT DEFAULT 'active',
+                original_prompt TEXT NOT NULL,
+                content_type TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `, (err) => {
+            if (err) {
+                console.error("[SQLite] Falha ao garantir a tabela 'content_conversations':", err.message);
+                return;
+            }
+            console.log("[SQLite] Tabela 'content_conversations' pronta para uso.");
+        });
+
+        db.run(`
+            CREATE TABLE IF NOT EXISTS content_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                message TEXT NOT NULL,
+                message_type TEXT DEFAULT 'content',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (conversation_id) REFERENCES content_conversations(id)
+            )
+        `, (err) => {
+            if (err) {
+                console.error("[SQLite] Falha ao garantir a tabela 'content_messages':", err.message);
+                return;
+            }
+            console.log("[SQLite] Tabela 'content_messages' pronta para uso.");
+        });
+
+        db.run(`CREATE INDEX IF NOT EXISTS idx_content_conversations_user ON content_conversations(user_id, updated_at)`);
+        db.run(`CREATE INDEX IF NOT EXISTS idx_content_messages_conversation ON content_messages(conversation_id, created_at)`);
+    });
+}
+
 function buildGoogleCallbackUrl() {
     const explicitCallbackUrl = String(process.env.GOOGLE_CALLBACK_URL || '').trim();
     if (explicitCallbackUrl) return explicitCallbackUrl;
@@ -161,6 +247,7 @@ const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CR
         console.log('SQLITE CONECTADO COM SUCESSO EM:', dbPath);
         initializeDoctorsTable();
         initializeUsersTable();
+        initializeContentChatTables();
     }
 });
 
@@ -557,6 +644,557 @@ async function generateCopyFromRequest(requestPayload, auth, doctorRow = null) {
         copy: generatedCopy,
         doctorContextRetrieved: true
     };
+}
+
+async function createContentSessionFromGeneration({ request, copy, userId }) {
+    const result = await dbRun(
+        `INSERT INTO content_sessions (
+            doctor_id,
+            user_id,
+            original_prompt,
+            original_content,
+            current_content,
+            trend_url,
+            trend_title
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+            request.doctorId,
+            userId,
+            request.prompt,
+            copy,
+            copy,
+            request.trendUrl || null,
+            request.trendTitle || null
+        ]
+    );
+
+    return result.lastID;
+}
+
+async function getContentSessionForUser(sessionId, userId) {
+    return dbGet(
+        `SELECT
+            cs.*,
+            d.name AS doctor_name,
+            d.specialty AS doctor_specialty,
+            d.drive_folder_id,
+            d.instructions_doc_id,
+            d.feedback_doc_id
+         FROM content_sessions cs
+         INNER JOIN doctors d ON d.id = cs.doctor_id
+         WHERE cs.id = ? AND cs.user_id = ?
+         LIMIT 1`,
+        [sessionId, userId]
+    );
+}
+
+async function getContentChatMessages(sessionId) {
+    return dbAll(
+        `SELECT id, role, message, content_snapshot, created_at
+         FROM content_chat_messages
+         WHERE session_id = ?
+         ORDER BY id ASC`,
+        [sessionId]
+    );
+}
+
+async function addContentChatMessage({ sessionId, role, message, contentSnapshot = null }) {
+    const normalizedRole = role === 'assistant' ? 'assistant' : 'user';
+    return dbRun(
+        `INSERT INTO content_chat_messages (session_id, role, message, content_snapshot)
+         VALUES (?, ?, ?, ?)`,
+        [sessionId, normalizedRole, message, contentSnapshot]
+    );
+}
+
+async function updateContentSessionCurrentContent(sessionId, currentContent) {
+    return dbRun(
+        `UPDATE content_sessions
+         SET current_content = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [currentContent, sessionId]
+    );
+}
+
+async function touchContentSession(sessionId) {
+    return dbRun(
+        `UPDATE content_sessions
+         SET updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [sessionId]
+    );
+}
+
+async function markContentSessionExported(sessionId, driveFileId) {
+    return dbRun(
+        `UPDATE content_sessions
+         SET drive_file_id = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [driveFileId, sessionId]
+    );
+}
+
+function formatChatHistoryForPrompt(messages = []) {
+    if (!messages.length) return '';
+
+    return messages.map((message) => {
+        const label = message.role === 'assistant' ? 'Editor' : 'Usuário';
+        return `${label}:\n${message.message}`;
+    }).join('\n\n---\n\n');
+}
+
+function formatBrazilianDateTime(value = new Date()) {
+    const date = value instanceof Date ? value : new Date(value);
+    return date.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
+function buildSafeFileSlug(value, fallback = 'historico-chat') {
+    const slug = String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '')
+        .slice(0, 56);
+
+    return slug || fallback;
+}
+
+function buildContentHistoryMarkdown({ session, messages, user }) {
+    const createdAt = formatBrazilianDateTime(session.created_at);
+    const updatedAt = formatBrazilianDateTime(session.updated_at);
+    const userLabel = `${user?.displayName || 'Usuário'}${user?.email ? ` <${user.email}>` : ''}`;
+
+    const messageBlocks = messages.length
+        ? messages.map((message, index) => {
+            const label = message.role === 'assistant' ? 'Gemini' : 'Usuário';
+            return [
+                `## ${index + 1}. ${label}`,
+                '',
+                `Data: ${formatBrazilianDateTime(message.created_at)}`,
+                '',
+                message.message
+            ].join('\n');
+        }).join('\n\n---\n\n')
+        : 'Sem mensagens de ajuste nesta sessão.';
+
+    return [
+        '# Histórico de chat do conteúdo',
+        '',
+        `Cliente: ${session.doctor_name}`,
+        `Especialidade: ${session.doctor_specialty || 'Não informada'}`,
+        `Usuário: ${userLabel}`,
+        `Criado em: ${createdAt}`,
+        `Última atualização: ${updatedAt}`,
+        session.trend_title ? `Trend vinculada: ${session.trend_title}` : '',
+        session.trend_url ? `URL da trend: ${session.trend_url}` : '',
+        '',
+        '## Prompt original',
+        '',
+        session.original_prompt,
+        '',
+        '## Conteúdo original',
+        '',
+        session.original_content,
+        '',
+        '## Conversa de ajustes',
+        '',
+        messageBlocks,
+        '',
+        '## Versão mais recente',
+        '',
+        session.current_content
+    ].join('\n');
+}
+
+function buildContentHistoryFileName(session) {
+    const now = new Date();
+    const YYYY = now.getFullYear();
+    const MM = String(now.getMonth() + 1).padStart(2, '0');
+    const DD = String(now.getDate()).padStart(2, '0');
+    const HH = String(now.getHours()).padStart(2, '0');
+    const MI = String(now.getMinutes()).padStart(2, '0');
+    const doctorSlug = buildSafeFileSlug(session.doctor_name, 'cliente');
+    return `historico-chat-${doctorSlug}-${YYYY}${MM}${DD}-${HH}${MI}.md`;
+}
+
+async function uploadContentHistoryToDrive({ session, messages, user, auth }) {
+    const drive = createDriveClient(auth);
+    const markdown = buildContentHistoryMarkdown({ session, messages, user });
+    const media = {
+        mimeType: 'text/markdown',
+        body: Readable.from(Buffer.from(markdown, 'utf-8'))
+    };
+
+    if (session.drive_file_id) {
+        const updateResponse = await drive.files.update({
+            fileId: session.drive_file_id,
+            media,
+            requestBody: { mimeType: 'text/markdown' },
+            fields: 'id, webViewLink',
+            supportsAllDrives: true
+        });
+        return updateResponse.data;
+    }
+
+    const createResponse = await drive.files.create({
+        requestBody: {
+            name: buildContentHistoryFileName(session),
+            parents: [session.drive_folder_id],
+            mimeType: 'text/markdown'
+        },
+        media,
+        fields: 'id, webViewLink',
+        supportsAllDrives: true
+    });
+
+    await markContentSessionExported(session.id, createResponse.data.id);
+    return createResponse.data;
+}
+
+function inferContentTypeFromCopy(copy, prompt = '') {
+    const text = `${copy || ''}\n${prompt || ''}`.toUpperCase();
+
+    if (/\bCARROSSEL\b/.test(text) || /\bTELA\s+0?\d+\s*:/i.test(text)) return 'Carrossel';
+    if (/\bREELS\b/.test(text) || /\bROTEIRO\s*:/i.test(text) || /\bTAKE\s+0?\d+\s*:/i.test(text)) return 'Reels';
+    if (/\bPOST FEED\b/.test(text) || /\bCOPY DA ARTE\s*:/i.test(text)) return 'Feed';
+    if (/\bSTORY\s+0?\d+\s*:/i.test(text)) return 'Stories';
+    if (/^\s*MENSAGEM\s*:/im.test(text) || /\bWHATSAPP\b/.test(text)) return 'WhatsApp';
+
+    return 'Outro';
+}
+
+function normalizeContentMessageRole(role) {
+    const normalizedRole = String(role || '').trim();
+    return ['user', 'assistant', 'system_event'].includes(normalizedRole)
+        ? normalizedRole
+        : 'system_event';
+}
+
+function normalizeContentMessageType(messageType) {
+    const normalizedType = String(messageType || '').trim();
+    const acceptedTypes = [
+        'initial_generation',
+        'refinement',
+        'regeneration',
+        'positive_feedback',
+        'negative_feedback',
+        'system_notice',
+        'content'
+    ];
+
+    return acceptedTypes.includes(normalizedType) ? normalizedType : 'content';
+}
+
+function serializeContentMessage(row) {
+    if (!row) return null;
+    return {
+        id: row.id,
+        conversationId: row.conversation_id,
+        role: row.role,
+        message: row.message,
+        messageType: row.message_type || row.messageType || 'content',
+        createdAt: row.created_at
+    };
+}
+
+async function getContentMessageById(messageId) {
+    const row = await dbGet(
+        `SELECT id, conversation_id, role, message, message_type, created_at
+         FROM content_messages
+         WHERE id = ?
+         LIMIT 1`,
+        [messageId]
+    );
+
+    return serializeContentMessage(row);
+}
+
+async function touchContentConversation(conversationId, status = null) {
+    if (status) {
+        return dbRun(
+            `UPDATE content_conversations
+             SET status = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [status, conversationId]
+        );
+    }
+
+    return dbRun(
+        `UPDATE content_conversations
+         SET updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [conversationId]
+    );
+}
+
+async function addContentMessage({ conversationId, role, message, messageType = 'content' }) {
+    const result = await dbRun(
+        `INSERT INTO content_messages (conversation_id, role, message, message_type)
+         VALUES (?, ?, ?, ?)`,
+        [
+            conversationId,
+            normalizeContentMessageRole(role),
+            String(message || '').trim(),
+            normalizeContentMessageType(messageType)
+        ]
+    );
+
+    await touchContentConversation(conversationId);
+    return getContentMessageById(result.lastID);
+}
+
+async function createContentConversationFromGeneration({ request, copy, userId }) {
+    const contentType = inferContentTypeFromCopy(copy, request.prompt);
+    const result = await dbRun(
+        `INSERT INTO content_conversations (
+            doctor_id,
+            user_id,
+            status,
+            original_prompt,
+            content_type
+         ) VALUES (?, ?, ?, ?, ?)`,
+        [
+            request.doctorId,
+            userId,
+            'active',
+            request.prompt,
+            contentType
+        ]
+    );
+
+    const assistantMessage = await addContentMessage({
+        conversationId: result.lastID,
+        role: 'assistant',
+        message: copy,
+        messageType: 'initial_generation'
+    });
+
+    return {
+        conversationId: result.lastID,
+        contentType,
+        assistantMessage
+    };
+}
+
+async function getContentConversationForUser(conversationId, userId) {
+    return dbGet(
+        `SELECT
+            cc.*,
+            d.name AS doctor_name,
+            d.specialty AS doctor_specialty,
+            d.drive_folder_id,
+            d.instructions_doc_id,
+            d.feedback_doc_id
+         FROM content_conversations cc
+         INNER JOIN doctors d ON d.id = cc.doctor_id
+         WHERE cc.id = ? AND cc.user_id = ?
+         LIMIT 1`,
+        [conversationId, userId]
+    );
+}
+
+async function getContentMessageForUser(messageId, userId) {
+    return dbGet(
+        `SELECT
+            cm.id,
+            cm.conversation_id,
+            cm.role,
+            cm.message,
+            cm.message_type,
+            cm.created_at,
+            cc.doctor_id,
+            cc.user_id,
+            cc.original_prompt,
+            cc.content_type,
+            d.name AS doctor_name,
+            d.specialty AS doctor_specialty,
+            d.drive_folder_id,
+            d.instructions_doc_id,
+            d.feedback_doc_id
+         FROM content_messages cm
+         INNER JOIN content_conversations cc ON cc.id = cm.conversation_id
+         INNER JOIN doctors d ON d.id = cc.doctor_id
+         WHERE cm.id = ? AND cc.user_id = ?
+         LIMIT 1`,
+        [messageId, userId]
+    );
+}
+
+async function getContentConversationMessages(conversationId) {
+    return dbAll(
+        `SELECT id, conversation_id, role, message, message_type, created_at
+         FROM content_messages
+         WHERE conversation_id = ?
+         ORDER BY id ASC`,
+        [conversationId]
+    );
+}
+
+async function getLatestAssistantContentMessage(conversationId) {
+    const row = await dbGet(
+        `SELECT id, conversation_id, role, message, message_type, created_at
+         FROM content_messages
+         WHERE conversation_id = ? AND role = 'assistant'
+         ORDER BY id DESC
+         LIMIT 1`,
+        [conversationId]
+    );
+
+    return serializeContentMessage(row);
+}
+
+function formatConversationHistoryForPrompt(messages = []) {
+    if (!messages.length) return 'Sem mensagens anteriores.';
+
+    return messages.map((message) => {
+        const type = message.message_type || message.messageType || 'content';
+        const label = message.role === 'assistant'
+            ? 'IA'
+            : (message.role === 'user' ? 'Usuário' : 'Evento do sistema');
+        return `${label} (${type}):\n${message.message}`;
+    }).join('\n\n---\n\n');
+}
+
+function cleanCopyForFeedback(copy) {
+    return String(copy || '')
+        .replace(/\r\n/g, '\n')
+        .trim();
+}
+
+function extractPositiveFeedbackCopy(message) {
+    const text = String(message || '').trim();
+    return text.replace(/^Usuário gostou da copy:\s*/i, '').trim();
+}
+
+function buildConversationHistoryMarkdown({ conversation, messages }) {
+    const firstAssistant = messages.find((message) => (
+        message.role === 'assistant' && message.message_type === 'initial_generation'
+    ));
+    const latestAssistant = [...messages].reverse().find((message) => message.role === 'assistant');
+    const adjustmentMessages = messages.filter((message) => (
+        message.role !== 'system_event' && message.message_type !== 'initial_generation'
+    ));
+    const positiveFeedbacks = messages.filter((message) => message.message_type === 'positive_feedback');
+    const negativeFeedbacks = messages.filter((message) => message.message_type === 'negative_feedback');
+
+    const adjustmentBlocks = adjustmentMessages.length
+        ? adjustmentMessages.map((message) => {
+            const label = message.role === 'assistant' ? 'IA' : 'Usuário';
+            return [`### ${label}`, '', message.message].join('\n');
+        }).join('\n\n')
+        : 'Sem ajustes registrados.';
+
+    const feedbackBlocks = [
+        ...positiveFeedbacks.map((message) => [
+            '### Like',
+            'Usuário gostou da copy:',
+            '',
+            extractPositiveFeedbackCopy(message.message)
+        ].join('\n')),
+        ...negativeFeedbacks.map((message) => [
+            '### Dislike',
+            message.message
+        ].join('\n'))
+    ].filter(Boolean).join('\n\n') || 'Sem feedbacks registrados.';
+
+    return [
+        '# Histórico de Criação',
+        '',
+        'Cliente:',
+        conversation.doctor_name || `Médico ${conversation.doctor_id}`,
+        '',
+        'Formato:',
+        conversation.content_type || 'Outro',
+        '',
+        'Data:',
+        formatBrazilianDateTime(new Date()),
+        '',
+        '## Briefing original',
+        '',
+        conversation.original_prompt,
+        '',
+        '## Primeira resposta',
+        '',
+        firstAssistant?.message || '',
+        '',
+        '## Conversa de ajuste',
+        '',
+        adjustmentBlocks,
+        '',
+        '## Feedbacks',
+        '',
+        feedbackBlocks,
+        '',
+        '## Versão mais recente',
+        '',
+        latestAssistant?.message || firstAssistant?.message || ''
+    ].join('\n');
+}
+
+function buildConversationHistoryFileName(conversation) {
+    const now = new Date();
+    const YYYY = now.getFullYear();
+    const MM = String(now.getMonth() + 1).padStart(2, '0');
+    const DD = String(now.getDate()).padStart(2, '0');
+    const dateLabel = `${YYYY}${MM}${DD}`;
+    const doctorSlug = buildSafeFileSlug(conversation.doctor_name || conversation.doctor_id, `medico-${conversation.doctor_id}`);
+
+    return `historico-conteudo-${dateLabel}-${doctorSlug}-${conversation.id}.md`;
+}
+
+async function uploadConversationHistoryToDrive({ conversation, messages, auth }) {
+    const drive = createDriveClient(auth);
+    const markdown = buildConversationHistoryMarkdown({ conversation, messages });
+    const media = {
+        mimeType: 'text/markdown',
+        body: Readable.from(Buffer.from(markdown, 'utf-8'))
+    };
+
+    const createResponse = await drive.files.create({
+        requestBody: {
+            name: buildConversationHistoryFileName(conversation),
+            parents: [conversation.drive_folder_id],
+            mimeType: 'text/markdown'
+        },
+        media,
+        fields: 'id, webViewLink',
+        supportsAllDrives: true
+    });
+
+    return createResponse.data;
+}
+
+async function tryUploadConversationHistory({ conversation, userId, auth }) {
+    try {
+        const freshConversation = await getContentConversationForUser(conversation.id, userId);
+        const messages = await getContentConversationMessages(conversation.id);
+        const driveFile = await uploadConversationHistoryToDrive({
+            conversation: freshConversation || conversation,
+            messages,
+            auth
+        });
+        const driveUrl = driveFile.webViewLink || `https://drive.google.com/file/d/${driveFile.id}/view`;
+
+        return {
+            historySaved: true,
+            driveFileId: driveFile.id,
+            driveUrl
+        };
+    } catch (error) {
+        console.error('[Content Chat] Falha ao salvar histórico da conversa:', error.message);
+        await addContentMessage({
+            conversationId: conversation.id,
+            role: 'system_event',
+            message: `Falha ao salvar histórico no Google Drive: ${error.message}`,
+            messageType: 'system_notice'
+        });
+
+        return {
+            historySaved: false,
+            historyError: 'Histórico mantido no banco local, mas não foi possível salvar no Drive.'
+        };
+    }
 }
 
 async function persistDoctorFeedback({ doctorId, feedbackText, userName, auth }) {
@@ -1021,15 +1659,439 @@ app.post('/api/orchestrate', ensureAuthenticated, async (req, res) => {
         const auth = await getGoogleAuthOrRespond(req, res);
         if (!auth) return;
         const result = await generateCopyFromRequest(request, auth);
+        const sessionId = await createContentSessionFromGeneration({
+            request,
+            copy: result.copy,
+            userId: req.user.id
+        });
+        const conversation = await createContentConversationFromGeneration({
+            request,
+            copy: result.copy,
+            userId: req.user.id
+        });
 
         res.json({
             message: "Success",
             doctorContextRetrieved: result.doctorContextRetrieved,
-            copy: result.copy
+            copy: result.copy,
+            sessionId,
+            conversationId: conversation.conversationId,
+            assistantMessage: conversation.assistantMessage,
+            contentType: conversation.contentType
         });
     } catch (orchestrationError) {
         if (await handleGoogleApiAuthFailure(req, res, orchestrationError)) return;
         res.status(500).json({ error: orchestrationError.message });
+    }
+});
+
+app.post('/api/content/conversations', ensureAuthenticated, async (req, res) => {
+    const request = normalizeGenerationRequest(req.body);
+
+    if (!request.doctorId || !request.prompt) {
+        return res.status(400).json({ error: 'doctorId and prompt are required.' });
+    }
+
+    try {
+        const auth = await getGoogleAuthOrRespond(req, res);
+        if (!auth) return;
+
+        const result = await generateCopyFromRequest(request, auth);
+        const sessionId = await createContentSessionFromGeneration({
+            request,
+            copy: result.copy,
+            userId: req.user.id
+        });
+        const conversation = await createContentConversationFromGeneration({
+            request,
+            copy: result.copy,
+            userId: req.user.id
+        });
+
+        return res.status(201).json({
+            message: 'Conversa criada.',
+            doctorContextRetrieved: result.doctorContextRetrieved,
+            copy: result.copy,
+            sessionId,
+            conversationId: conversation.conversationId,
+            assistantMessage: conversation.assistantMessage,
+            contentType: conversation.contentType
+        });
+    } catch (error) {
+        if (await handleGoogleApiAuthFailure(req, res, error)) return;
+        console.error('[Content Chat] Falha ao criar conversa:', error.message);
+        return res.status(500).json({ error: 'Falha ao gerar conteúdo: ' + error.message });
+    }
+});
+
+app.post('/api/content/conversations/:id/messages', ensureAuthenticated, async (req, res) => {
+    const conversationId = String(req.params.id || '').trim();
+    const userMessage = String(req.body.userMessage || req.body.userAdjustment || '').trim();
+
+    if (!conversationId || !userMessage) {
+        return res.status(400).json({ error: 'conversationId and userMessage are required.' });
+    }
+
+    try {
+        const conversation = await getContentConversationForUser(conversationId, req.user.id);
+        if (!conversation) return res.status(404).json({ error: 'Conversa não encontrada.' });
+        if (conversation.status === 'finished') {
+            return res.status(409).json({ error: 'Esta conversa já foi finalizada. Comece um novo conteúdo para continuar.' });
+        }
+
+        const latestAssistant = await getLatestAssistantContentMessage(conversation.id);
+        if (!latestAssistant) {
+            return res.status(400).json({ error: 'Nenhuma resposta da IA encontrada para ajustar.' });
+        }
+
+        const savedUserMessage = await addContentMessage({
+            conversationId: conversation.id,
+            role: 'user',
+            message: userMessage,
+            messageType: 'refinement'
+        });
+
+        const auth = await getGoogleAuthOrRespond(req, res);
+        if (!auth) return;
+
+        const [medicalContext, conversationMessages] = await Promise.all([
+            medicalController.fetchContext(
+                conversation.instructions_doc_id,
+                conversation.feedback_doc_id,
+                auth,
+                conversation.drive_folder_id
+            ),
+            getContentConversationMessages(conversation.id)
+        ]);
+
+        const refinedCopy = await medicalController.chatRefineMedicalCopy({
+            medicalContext,
+            originalPrompt: conversation.original_prompt,
+            currentContent: latestAssistant.message,
+            userMessage,
+            conversationHistory: formatConversationHistoryForPrompt(conversationMessages)
+        });
+        const assistantMessage = await addContentMessage({
+            conversationId: conversation.id,
+            role: 'assistant',
+            message: refinedCopy,
+            messageType: 'refinement'
+        });
+
+        return res.status(200).json({
+            message: 'Conteúdo ajustado.',
+            copy: refinedCopy,
+            userMessage: savedUserMessage,
+            assistantMessage
+        });
+    } catch (error) {
+        if (await handleGoogleApiAuthFailure(req, res, error)) return;
+        console.error('[Content Chat] Falha ao ajustar conversa:', error.message);
+        return res.status(500).json({ error: 'Falha ao ajustar o conteúdo: ' + error.message });
+    }
+});
+
+app.post('/api/content/conversations/:id/regenerate', ensureAuthenticated, async (req, res) => {
+    const conversationId = String(req.params.id || '').trim();
+    if (!conversationId) return res.status(400).json({ error: 'conversationId is required.' });
+
+    try {
+        const conversation = await getContentConversationForUser(conversationId, req.user.id);
+        if (!conversation) return res.status(404).json({ error: 'Conversa não encontrada.' });
+        if (conversation.status === 'finished') {
+            return res.status(409).json({ error: 'Esta conversa já foi finalizada. Comece um novo conteúdo para continuar.' });
+        }
+
+        const auth = await getGoogleAuthOrRespond(req, res);
+        if (!auth) return;
+
+        const latestAssistant = await getLatestAssistantContentMessage(conversation.id);
+        const result = await generateCopyFromRequest(
+            {
+                doctorId: conversation.doctor_id,
+                prompt: conversation.original_prompt,
+                previousCopy: latestAssistant?.message || ''
+            },
+            auth,
+            conversation
+        );
+        const assistantMessage = await addContentMessage({
+            conversationId: conversation.id,
+            role: 'assistant',
+            message: result.copy,
+            messageType: 'regeneration'
+        });
+
+        return res.status(200).json({
+            message: 'Nova versão gerada.',
+            copy: result.copy,
+            assistantMessage
+        });
+    } catch (error) {
+        if (await handleGoogleApiAuthFailure(req, res, error)) return;
+        console.error('[Content Chat] Falha ao regenerar conversa:', error.message);
+        return res.status(500).json({ error: 'Falha ao gerar novamente: ' + error.message });
+    }
+});
+
+app.post('/api/content/messages/:id/like', ensureAuthenticated, async (req, res) => {
+    const messageId = String(req.params.id || '').trim();
+    if (!messageId) return res.status(400).json({ error: 'messageId is required.' });
+
+    try {
+        const message = await getContentMessageForUser(messageId, req.user.id);
+        if (!message) return res.status(404).json({ error: 'Mensagem não encontrada.' });
+        if (message.role !== 'assistant') {
+            return res.status(400).json({ error: 'Apenas mensagens da IA podem receber like.' });
+        }
+
+        const cleanCopy = cleanCopyForFeedback(message.message);
+        const feedbackText = `Usuário gostou da copy: ${cleanCopy}`;
+        const feedbackMessage = await addContentMessage({
+            conversationId: message.conversation_id,
+            role: 'system_event',
+            message: feedbackText,
+            messageType: 'positive_feedback'
+        });
+
+        const auth = await getGoogleAuthOrRespond(req, res);
+        if (!auth) return;
+
+        try {
+            await persistDoctorFeedback({
+                doctorId: message.doctor_id,
+                feedbackText,
+                userName: req.user?.displayName || 'Usuário',
+                auth
+            });
+        } catch (feedbackError) {
+            await addContentMessage({
+                conversationId: message.conversation_id,
+                role: 'system_event',
+                message: `Falha ao registrar feedback positivo no arquivo do cliente: ${feedbackError.message}`,
+                messageType: 'system_notice'
+            });
+            if (await handleGoogleDriveWriteScopeFailure(req, res, feedbackError)) return;
+            if (await handleGoogleApiAuthFailure(req, res, feedbackError)) return;
+            return res.status(500).json({
+                error: 'Like salvo no histórico local, mas não foi possível registrar no feedback do cliente.',
+                feedbackSavedLocal: true
+            });
+        }
+
+        const conversation = await getContentConversationForUser(message.conversation_id, req.user.id);
+        const historyResult = await tryUploadConversationHistory({ conversation, userId: req.user.id, auth });
+
+        return res.status(200).json({
+            message: 'Feedback positivo registrado.',
+            feedbackMessage,
+            ...historyResult
+        });
+    } catch (error) {
+        if (await handleGoogleApiAuthFailure(req, res, error)) return;
+        console.error('[Content Chat] Falha ao registrar like:', error.message);
+        return res.status(500).json({ error: 'Falha ao registrar like: ' + error.message });
+    }
+});
+
+app.post('/api/content/messages/:id/dislike', ensureAuthenticated, async (req, res) => {
+    const messageId = String(req.params.id || '').trim();
+    const feedbackText = String(req.body.feedbackText || '').trim();
+
+    if (!messageId || !feedbackText) {
+        return res.status(400).json({ error: 'messageId and feedbackText are required.' });
+    }
+
+    try {
+        const message = await getContentMessageForUser(messageId, req.user.id);
+        if (!message) return res.status(404).json({ error: 'Mensagem não encontrada.' });
+        if (message.role !== 'assistant') {
+            return res.status(400).json({ error: 'Apenas mensagens da IA podem receber dislike.' });
+        }
+
+        const cleanCopy = cleanCopyForFeedback(message.message);
+        const clientFeedbackText = [
+            'Usuário pediu melhoria para a copy:',
+            '',
+            cleanCopy,
+            '',
+            'Feedback do usuário:',
+            feedbackText
+        ].join('\n');
+        const feedbackMessage = await addContentMessage({
+            conversationId: message.conversation_id,
+            role: 'system_event',
+            message: feedbackText,
+            messageType: 'negative_feedback'
+        });
+
+        const auth = await getGoogleAuthOrRespond(req, res);
+        if (!auth) return;
+
+        try {
+            await persistDoctorFeedback({
+                doctorId: message.doctor_id,
+                feedbackText: clientFeedbackText,
+                userName: req.user?.displayName || 'Usuário',
+                auth
+            });
+        } catch (feedbackError) {
+            await addContentMessage({
+                conversationId: message.conversation_id,
+                role: 'system_event',
+                message: `Falha ao registrar feedback negativo no arquivo do cliente: ${feedbackError.message}`,
+                messageType: 'system_notice'
+            });
+            if (await handleGoogleDriveWriteScopeFailure(req, res, feedbackError)) return;
+            if (await handleGoogleApiAuthFailure(req, res, feedbackError)) return;
+            return res.status(500).json({
+                error: 'Dislike salvo no histórico local, mas não foi possível registrar no feedback do cliente.',
+                feedbackSavedLocal: true
+            });
+        }
+
+        const conversation = await getContentConversationForUser(message.conversation_id, req.user.id);
+        const historyResult = await tryUploadConversationHistory({ conversation, userId: req.user.id, auth });
+
+        return res.status(200).json({
+            message: 'Feedback negativo registrado.',
+            feedbackMessage,
+            ...historyResult
+        });
+    } catch (error) {
+        if (await handleGoogleApiAuthFailure(req, res, error)) return;
+        console.error('[Content Chat] Falha ao registrar dislike:', error.message);
+        return res.status(500).json({ error: 'Falha ao registrar dislike: ' + error.message });
+    }
+});
+
+app.post('/api/content/conversations/:id/finish', ensureAuthenticated, async (req, res) => {
+    const conversationId = String(req.params.id || '').trim();
+    if (!conversationId) return res.status(400).json({ error: 'conversationId is required.' });
+
+    try {
+        const conversation = await getContentConversationForUser(conversationId, req.user.id);
+        if (!conversation) return res.status(404).json({ error: 'Conversa não encontrada.' });
+
+        await touchContentConversation(conversation.id, 'finished');
+
+        const auth = await getGoogleAuthOrRespond(req, res);
+        if (!auth) return;
+
+        const historyResult = await tryUploadConversationHistory({ conversation, userId: req.user.id, auth });
+
+        return res.status(200).json({
+            message: historyResult.historySaved
+                ? 'Conversa finalizada e histórico salvo.'
+                : 'Conversa finalizada. Histórico mantido no banco local.',
+            status: 'finished',
+            ...historyResult
+        });
+    } catch (error) {
+        if (await handleGoogleApiAuthFailure(req, res, error)) return;
+        console.error('[Content Chat] Falha ao finalizar conversa:', error.message);
+        return res.status(500).json({ error: 'Falha ao finalizar conversa: ' + error.message });
+    }
+});
+
+app.post('/api/content-sessions/:sessionId/refine', ensureAuthenticated, async (req, res) => {
+    const sessionId = String(req.params.sessionId || '').trim();
+    const userAdjustment = String(req.body.userAdjustment || '').trim();
+
+    if (!sessionId || !userAdjustment) {
+        return res.status(400).json({ error: 'sessionId and userAdjustment are required.' });
+    }
+
+    try {
+        const session = await getContentSessionForUser(sessionId, req.user.id);
+        if (!session) return res.status(404).json({ error: 'Sessão de conteúdo não encontrada.' });
+
+        const auth = await getGoogleAuthOrRespond(req, res);
+        if (!auth) return;
+
+        const [medicalContext, messages] = await Promise.all([
+            medicalController.fetchContext(
+                session.instructions_doc_id,
+                session.feedback_doc_id,
+                auth,
+                session.drive_folder_id
+            ),
+            getContentChatMessages(session.id)
+        ]);
+
+        const refinedCopy = await medicalController.refineMedicalCopy({
+            originalPrompt: session.original_prompt,
+            originalContent: session.original_content,
+            currentContent: session.current_content,
+            userAdjustment,
+            medicalContext,
+            chatHistory: formatChatHistoryForPrompt(messages)
+        });
+
+        const refused = medicalController.isRefinementRefusal(refinedCopy);
+
+        await addContentChatMessage({
+            sessionId: session.id,
+            role: 'user',
+            message: userAdjustment
+        });
+        await addContentChatMessage({
+            sessionId: session.id,
+            role: 'assistant',
+            message: refinedCopy,
+            contentSnapshot: refused ? session.current_content : refinedCopy
+        });
+
+        if (!refused) {
+            await updateContentSessionCurrentContent(session.id, refinedCopy);
+        } else {
+            await touchContentSession(session.id);
+        }
+
+        return res.status(200).json({
+            message: refused ? 'Pedido fora do escopo do modo chat.' : 'Conteúdo ajustado.',
+            copy: refused ? session.current_content : refinedCopy,
+            assistantMessage: refinedCopy,
+            refused,
+            updated: !refused
+        });
+    } catch (error) {
+        if (await handleGoogleApiAuthFailure(req, res, error)) return;
+        console.error('[Content Chat] Falha ao refinar conteúdo:', error.message);
+        return res.status(500).json({ error: 'Falha ao ajustar o conteúdo: ' + error.message });
+    }
+});
+
+app.post('/api/content-sessions/:sessionId/export', ensureAuthenticated, async (req, res) => {
+    const sessionId = String(req.params.sessionId || '').trim();
+    if (!sessionId) return res.status(400).json({ error: 'sessionId is required.' });
+
+    try {
+        const session = await getContentSessionForUser(sessionId, req.user.id);
+        if (!session) return res.status(404).json({ error: 'Sessão de conteúdo não encontrada.' });
+
+        const auth = await getGoogleAuthOrRespond(req, res);
+        if (!auth) return;
+
+        const messages = await getContentChatMessages(session.id);
+        const driveFile = await uploadContentHistoryToDrive({
+            session,
+            messages,
+            user: req.user,
+            auth
+        });
+        const driveUrl = driveFile.webViewLink || `https://drive.google.com/file/d/${driveFile.id}/view`;
+
+        return res.status(200).json({
+            message: 'Histórico salvo na pasta do cliente.',
+            driveFileId: driveFile.id,
+            driveUrl
+        });
+    } catch (error) {
+        if (await handleGoogleDriveWriteScopeFailure(req, res, error)) return;
+        if (await handleGoogleApiAuthFailure(req, res, error)) return;
+        console.error('[Content Chat] Falha ao exportar histórico:', error.message);
+        return res.status(500).json({ error: 'Falha ao salvar histórico no Drive: ' + error.message });
     }
 });
 
