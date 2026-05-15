@@ -2308,3 +2308,118 @@ textarea:focus {
         width: 100%;
     }
 }
+
+/* ── Aba Histórico ───────────────────────────────────────────────────────── */
+
+.history-page {
+    padding: 0;
+}
+
+.history-header {
+    margin-bottom: 28px;
+}
+
+.history-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin: 0 0 6px 0;
+}
+
+.history-subtitle {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.history-list-container {
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--bg-card);
+}
+
+.history-list-header,
+.history-list-row {
+    display: flex;
+    align-items: center;
+    padding: 11px 18px;
+    gap: 12px;
+}
+
+.history-list-header {
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--bg-hover);
+}
+
+.history-list-header .history-col {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.history-list-row {
+    border-bottom: 1px solid var(--border-soft);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.history-list-row:last-child {
+    border-bottom: none;
+}
+
+.history-list-row:hover {
+    background: var(--bg-hover);
+}
+
+.history-list-row .history-col {
+    font-size: 0.9rem;
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-col-title {
+    flex: 3;
+    min-width: 0;
+    font-weight: 500;
+}
+
+.history-col-client {
+    flex: 2;
+    min-width: 0;
+    color: var(--text-secondary) !important;
+}
+
+.history-col-atendimento {
+    flex: 2;
+    min-width: 0;
+    color: var(--text-secondary) !important;
+}
+
+.history-col-date {
+    flex: 1;
+    min-width: 80px;
+    text-align: right;
+    color: var(--text-secondary) !important;
+    font-size: 0.82rem !important;
+}
+
+.history-empty-state {
+    padding: 48px 24px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+@media (max-width: 640px) {
+    .history-col-atendimento {
+        display: none;
+    }
+    .history-col-date {
+        flex: 0 0 auto;
+    }
+}

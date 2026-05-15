@@ -39,6 +39,15 @@
                     </a>
                 </li>
                 <li>
+                    <a href="/historico" class="<%= activePage === 'historico' ? 'active' : '' %>" title="Histórico">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        <span class="nav-label">Histórico</span>
+                    </a>
+                </li>
+                <li>
                     <a href="/clientes" class="<%= activePage === 'clientes' ? 'active' : '' %>" title="Clientes">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -307,6 +316,28 @@
                             type="button" onclick="createNewPlanningFromChat()">
                             Criar novo planejamento
                         </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── TAB: HISTÓRICO ── -->
+            <section id="historico-tab" class="tab-pane <%= activePage === 'historico' ? 'active' : '' %>">
+                <div class="history-page">
+                    <div class="history-header">
+                        <h2 class="history-title">Histórico de Criações</h2>
+                        <p class="history-subtitle">Suas criações salvas, organizadas por data.</p>
+                    </div>
+
+                    <div class="history-list-container">
+                        <div class="history-list-header">
+                            <span class="history-col history-col-title">Título</span>
+                            <span class="history-col history-col-client">Cliente</span>
+                            <span class="history-col history-col-atendimento">Atendimento</span>
+                            <span class="history-col history-col-date">Data</span>
+                        </div>
+                        <div id="history-list-body">
+                            <div class="history-empty-state">Nenhuma criação salva ainda. Dê um like em um conteúdo gerado para adicioná-lo aqui.</div>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -743,7 +774,7 @@
         let activeFeedbackMessageId = null;
         let selectedTrend = null;
         const TRENDS_TOTAL = 12;
-        const MEDICAL_CATEGORIES = <%- JSON.stringify(medicalCategories || []) %>;
+        const MEDICAL_CATEGORIES = JSON.parse(decodeURIComponent("<%- encodeURIComponent(JSON.stringify(medicalCategories || [])) %>"));
         let currentTrends = [];
         let trendSearchState = { query: '', matches: [], cursor: -1 };
         let activeQrCode = null;
@@ -780,8 +811,13 @@
 
             if (activePage === 'planejamento') {
                 hydratePlanningPrefill();
+                hydrateHistoryRestore();
                 loadDoctors();
                 setupContentChatScrollControls();
+            }
+
+            if (activePage === 'historico') {
+                loadHistoryList();
             }
 
             if (activePage === 'ferramentas' && activeTool === 'gerador-qr') {
@@ -2716,32 +2752,8 @@
             }
         }
 
-        async function likeAssistantMessage(messageId) {
-            setMessageActionStatus(messageId, 'Salvando...');
-
-            try {
-                const resp = await fetch(`/api/content/messages/${messageId}/like`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await resp.json().catch(() => ({}));
-
-                if (!resp.ok && data && data.reauth && data.loginUrl) {
-                    window.location.href = data.loginUrl;
-                    return;
-                }
-
-                if (!resp.ok) {
-                    throw new Error(data.error || 'Falha ao salvar like.');
-                }
-
-                setMessageActionStatus(messageId, data.historySaved === false ? 'Like salvo' : 'Like salvo');
-                const status = document.getElementById('content-chat-status');
-                if (status && data.historySaved === false) status.innerText = data.historyError || 'Feedback salvo; histórico mantido no banco.';
-            } catch (error) {
-                console.error(error);
-                setMessageActionStatus(messageId, error.message || 'Erro no like', true);
-            }
+        function likeAssistantMessage(messageId) {
+            openSaveToHistoryModal(messageId);
         }
 
         async function saveContentChatHistory() {
@@ -3351,6 +3363,310 @@
                     }
                 });
             }
+        });
+
+        // ── HISTÓRICO: Estado ─────────────────────────────────────────────────────
+        let pendingLikeMessageId = null;
+        let activeHistoryItemId = null;
+
+        // ── HISTÓRICO: Modal "Adicionar ao Histórico" ─────────────────────────────
+        (function insertSaveToHistoryModal() {
+            if (document.getElementById('save-history-modal-overlay')) return;
+            const html = `
+<style>
+  #save-history-modal-overlay { position:fixed; inset:0; background:rgba(17,24,39,0.22); display:none; align-items:center; justify-content:center; z-index:1300; }
+  #save-history-modal { width:100%; max-width:480px; background:var(--bg-card); border-radius:14px; padding:28px 24px 20px; box-shadow:var(--shadow-float); color:var(--text-main); border:1px solid var(--border-soft); }
+  #save-history-modal h3 { margin:0 0 6px 0; font-size:1.1rem; font-weight:700; }
+  #save-history-modal .save-history-dialog { margin:0 0 14px 0; color:var(--text-secondary); font-size:0.92rem; }
+  #save-history-name-input { width:100%; background:var(--bg-hover); border:1px solid var(--border-soft); color:var(--text-main); padding:11px 14px; border-radius:10px; font-size:0.95rem; box-sizing:border-box; }
+  #save-history-name-input:focus { outline:none; border-color:var(--primary,#6366f1); }
+  #save-history-modal .save-history-tip { display:block; margin-top:8px; font-size:0.8rem; font-style:italic; color:var(--text-secondary); }
+  .save-history-actions { display:flex; gap:10px; margin-top:18px; justify-content:flex-end; }
+  .save-history-btn-cancel { background:var(--bg-card); border:1px solid var(--border-soft); color:var(--text-secondary); padding:9px 14px; border-radius:10px; cursor:pointer; font-size:0.9rem; }
+  .save-history-btn-save { background:var(--text-main); color:#fff; border:none; padding:10px 18px; border-radius:10px; cursor:pointer; font-weight:600; font-size:0.9rem; }
+  .save-history-btn-save:disabled { opacity:0.5; cursor:not-allowed; }
+  #save-history-modal-status { font-size:0.85rem; color:var(--text-secondary); margin-top:8px; min-height:18px; }
+</style>
+<div id="save-history-modal-overlay" aria-hidden="true">
+  <div id="save-history-modal" role="dialog" aria-modal="true" aria-labelledby="save-history-modal-title">
+    <h3 id="save-history-modal-title">Adicionar ao histórico</h3>
+    <p class="save-history-dialog">Dê um nome a sua criação</p>
+    <input id="save-history-name-input" type="text" placeholder="Carrossel: Biohacking e longevidade" maxlength="120" autocomplete="off" />
+    <em class="save-history-tip">Dica: Coloque o formato da criação antes do tema, Ex: Carrossel sobre...; Roteiro sobre...;</em>
+    <div id="save-history-modal-status"></div>
+    <div class="save-history-actions">
+      <button id="save-history-cancel" class="save-history-btn-cancel" type="button">Cancelar</button>
+      <button id="save-history-confirm" class="save-history-btn-save" type="button">Salvar</button>
+    </div>
+  </div>
+</div>`;
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = html;
+            document.body.appendChild(wrapper);
+        })();
+
+        function openSaveToHistoryModal(messageId) {
+            pendingLikeMessageId = messageId ? String(messageId) : null;
+            const overlay = document.getElementById('save-history-modal-overlay');
+            const input = document.getElementById('save-history-name-input');
+            const status = document.getElementById('save-history-modal-status');
+            const btn = document.getElementById('save-history-confirm');
+            if (!overlay) return;
+            if (input) { input.value = ''; input.disabled = false; }
+            if (status) status.innerText = '';
+            if (btn) btn.disabled = false;
+            overlay.style.display = 'flex';
+            overlay.setAttribute('aria-hidden', 'false');
+            if (input) setTimeout(() => input.focus(), 50);
+        }
+
+        function closeSaveToHistoryModal() {
+            const overlay = document.getElementById('save-history-modal-overlay');
+            if (!overlay) return;
+            overlay.style.display = 'none';
+            overlay.setAttribute('aria-hidden', 'true');
+            pendingLikeMessageId = null;
+        }
+
+        async function saveToHistory() {
+            const input = document.getElementById('save-history-name-input');
+            const status = document.getElementById('save-history-modal-status');
+            const btn = document.getElementById('save-history-confirm');
+            const name = input ? input.value.trim() : '';
+
+            if (!name) {
+                if (input) input.focus();
+                if (status) status.innerText = 'Por favor, dê um nome à sua criação.';
+                return;
+            }
+            if (!pendingLikeMessageId) { closeSaveToHistoryModal(); return; }
+
+            if (btn) btn.disabled = true;
+            if (input) input.disabled = true;
+            if (status) status.innerText = 'Salvando...';
+
+            try {
+                const resp = await fetch('/api/history', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messageId: pendingLikeMessageId, name })
+                });
+                const data = await resp.json().catch(() => ({}));
+
+                if (!resp.ok && data && data.reauth && data.loginUrl) {
+                    window.location.href = data.loginUrl;
+                    return;
+                }
+                if (!resp.ok) throw new Error(data.error || 'Falha ao salvar no histórico.');
+
+                setMessageActionStatus(pendingLikeMessageId, 'Salvo no histórico ✓');
+                closeSaveToHistoryModal();
+            } catch (error) {
+                console.error(error);
+                if (status) status.innerText = error.message || 'Erro ao salvar.';
+                if (btn) btn.disabled = false;
+                if (input) input.disabled = false;
+            }
+        }
+
+        // ── HISTÓRICO: Modal de Visualização ─────────────────────────────────────
+        (function insertHistoryViewerModal() {
+            if (document.getElementById('history-viewer-overlay')) return;
+            const html = `
+<style>
+  #history-viewer-overlay { position:fixed; inset:0; background:rgba(17,24,39,0.22); display:none; align-items:center; justify-content:center; z-index:1300; }
+  #history-viewer-modal { width:100%; max-width:680px; max-height:90vh; background:var(--bg-card); border-radius:14px; padding:24px; box-shadow:var(--shadow-float); color:var(--text-main); border:1px solid var(--border-soft); display:flex; flex-direction:column; }
+  #history-viewer-modal h3 { margin:0 0 4px 0; font-size:1.1rem; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #history-viewer-meta { font-size:0.82rem; color:var(--text-secondary); margin-bottom:16px; }
+  #history-viewer-content { flex:1; overflow-y:auto; background:var(--bg-hover); border:1px solid var(--border-soft); border-radius:10px; padding:16px; font-size:0.9rem; line-height:1.7; white-space:pre-wrap; word-break:break-word; max-height:52vh; }
+  .history-viewer-actions { display:flex; gap:10px; margin-top:18px; justify-content:flex-end; flex-wrap:wrap; }
+  .hv-btn-conclude { background:var(--bg-card); border:1px solid var(--border-soft); color:var(--text-secondary); padding:9px 14px; border-radius:10px; cursor:pointer; font-size:0.9rem; }
+  .hv-btn-copy { background:var(--bg-hover); border:1px solid var(--border-soft); color:var(--text-main); padding:9px 14px; border-radius:10px; cursor:pointer; font-size:0.9rem; font-weight:500; }
+  .hv-btn-chat { background:var(--text-main); color:#fff; border:none; padding:10px 18px; border-radius:10px; cursor:pointer; font-weight:600; font-size:0.9rem; }
+  .hv-btn-chat:disabled { opacity:0.5; cursor:not-allowed; }
+</style>
+<div id="history-viewer-overlay" aria-hidden="true">
+  <div id="history-viewer-modal" role="dialog" aria-modal="true" aria-labelledby="history-viewer-title">
+    <h3 id="history-viewer-title">—</h3>
+    <div id="history-viewer-meta">—</div>
+    <div id="history-viewer-content"></div>
+    <div class="history-viewer-actions">
+      <button id="hv-btn-conclude" class="hv-btn-conclude" type="button">Concluir</button>
+      <button id="hv-btn-copy" class="hv-btn-copy" type="button">Copiar texto</button>
+      <button id="hv-btn-chat" class="hv-btn-chat" type="button">Abrir no chat</button>
+    </div>
+  </div>
+</div>`;
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = html;
+            document.body.appendChild(wrapper);
+        })();
+
+        function closeHistoryViewerModal() {
+            const overlay = document.getElementById('history-viewer-overlay');
+            if (!overlay) return;
+            overlay.style.display = 'none';
+            overlay.setAttribute('aria-hidden', 'true');
+            activeHistoryItemId = null;
+        }
+
+        async function openHistoryItemModal(id) {
+            activeHistoryItemId = id;
+            const overlay = document.getElementById('history-viewer-overlay');
+            const titleEl = document.getElementById('history-viewer-title');
+            const metaEl = document.getElementById('history-viewer-meta');
+            const contentEl = document.getElementById('history-viewer-content');
+            const chatBtn = document.getElementById('hv-btn-chat');
+
+            if (!overlay) return;
+            if (titleEl) titleEl.innerText = 'Carregando...';
+            if (metaEl) metaEl.innerText = '';
+            if (contentEl) contentEl.innerText = '';
+            if (chatBtn) chatBtn.disabled = false;
+            overlay.style.display = 'flex';
+            overlay.setAttribute('aria-hidden', 'false');
+
+            try {
+                const resp = await fetch(`/api/history/${id}`);
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data.error || 'Falha ao carregar item.');
+
+                if (titleEl) titleEl.innerText = data.name || '—';
+                if (metaEl) {
+                    const date = data.created_at ? new Date(data.created_at).toLocaleDateString('pt-BR') : '—';
+                    metaEl.innerText = `${data.doctor_name || '—'} · ${data.user_name || '—'} · ${date}`;
+                }
+                if (contentEl) contentEl.innerText = data.content || '';
+                overlay.setAttribute('data-content', data.content || '');
+            } catch (error) {
+                if (titleEl) titleEl.innerText = 'Erro ao carregar';
+                if (contentEl) contentEl.innerText = error.message;
+            }
+        }
+
+        async function openHistoryInChat() {
+            if (!activeHistoryItemId) return;
+            const chatBtn = document.getElementById('hv-btn-chat');
+            if (chatBtn) chatBtn.disabled = true;
+
+            try {
+                const resp = await fetch(`/api/history/${activeHistoryItemId}/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data.error || 'Falha ao restaurar.');
+
+                closeHistoryViewerModal();
+                sessionStorage.setItem('resultpubli-history-restore', JSON.stringify({
+                    conversationId: data.conversationId,
+                    doctorId: String(data.doctorId),
+                    assistantMessage: data.assistantMessage
+                }));
+                window.location.href = '/planejamento';
+            } catch (error) {
+                if (chatBtn) chatBtn.disabled = false;
+                alert(error.message || 'Erro ao abrir no chat.');
+            }
+        }
+
+        // ── HISTÓRICO: Lista ──────────────────────────────────────────────────────
+        async function loadHistoryList() {
+            const body = document.getElementById('history-list-body');
+            if (!body) return;
+            body.innerHTML = '<div class="history-empty-state">Carregando...</div>';
+
+            try {
+                const resp = await fetch('/api/history');
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data.error || 'Falha ao carregar histórico.');
+
+                if (!data.data || data.data.length === 0) {
+                    body.innerHTML = '<div class="history-empty-state">Nenhuma criação salva ainda. Dê um like em um conteúdo gerado para adicioná-lo aqui.</div>';
+                    return;
+                }
+
+                body.innerHTML = data.data.map(item => {
+                    const date = item.created_at ? new Date(item.created_at).toLocaleDateString('pt-BR') : '—';
+                    const title = (item.name || '').length > 60 ? item.name.slice(0, 60) + '…' : (item.name || '—');
+                    return `<div class="history-list-row" data-id="${item.id}" role="button" tabindex="0" title="${(item.name || '').replace(/"/g, '&quot;')}">
+                        <span class="history-col history-col-title">${escapeHtml(title)}</span>
+                        <span class="history-col history-col-client">${escapeHtml(item.doctor_name || '—')}</span>
+                        <span class="history-col history-col-atendimento">${escapeHtml(item.user_name || '—')}</span>
+                        <span class="history-col history-col-date">${date}</span>
+                    </div>`;
+                }).join('');
+
+                body.querySelectorAll('.history-list-row').forEach(row => {
+                    row.addEventListener('click', () => openHistoryItemModal(row.dataset.id));
+                    row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') openHistoryItemModal(row.dataset.id); });
+                });
+            } catch (error) {
+                body.innerHTML = `<div class="history-empty-state">Erro ao carregar: ${escapeHtml(error.message)}</div>`;
+            }
+        }
+
+        // ── HISTÓRICO: Restore a partir do chat ───────────────────────────────────
+        async function hydrateHistoryRestore() {
+            try {
+                const raw = sessionStorage.getItem('resultpubli-history-restore');
+                if (!raw) return;
+                sessionStorage.removeItem('resultpubli-history-restore');
+                const { conversationId, doctorId, assistantMessage } = JSON.parse(raw);
+                if (!conversationId || !doctorId || !assistantMessage) return;
+
+                // Aguarda doctors serem carregados antes de selecionar
+                await new Promise(resolve => setTimeout(resolve, 400));
+                const select = document.getElementById('doctor-select');
+                if (select) {
+                    select.value = String(doctorId);
+                    if (!select.value) {
+                        // Opção ainda não existe — carrega novamente e espera
+                        await loadDoctors();
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                        select.value = String(doctorId);
+                    }
+                }
+
+                applyGeneratedCopy(assistantMessage.message || '', { doctorId: String(doctorId) }, {
+                    conversationId: String(conversationId),
+                    assistantMessage
+                });
+            } catch (error) {
+                console.error('[History Restore]', error);
+                sessionStorage.removeItem('resultpubli-history-restore');
+            }
+        }
+
+        // ── HISTÓRICO: Event listeners dos modais ─────────────────────────────────
+        document.addEventListener('DOMContentLoaded', () => {
+            // Modal "Adicionar ao Histórico"
+            const saveHistoryCancel = document.getElementById('save-history-cancel');
+            const saveHistoryConfirm = document.getElementById('save-history-confirm');
+            const saveHistoryInput = document.getElementById('save-history-name-input');
+
+            if (saveHistoryCancel) saveHistoryCancel.addEventListener('click', closeSaveToHistoryModal);
+            if (saveHistoryConfirm) saveHistoryConfirm.addEventListener('click', saveToHistory);
+            if (saveHistoryInput) {
+                saveHistoryInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') saveToHistory();
+                    if (e.key === 'Escape') closeSaveToHistoryModal();
+                });
+            }
+            document.getElementById('save-history-modal-overlay')?.addEventListener('click', (e) => {
+                if (e.target.id === 'save-history-modal-overlay') closeSaveToHistoryModal();
+            });
+
+            // Modal Viewer
+            document.getElementById('hv-btn-conclude')?.addEventListener('click', closeHistoryViewerModal);
+            document.getElementById('hv-btn-copy')?.addEventListener('click', () => {
+                const content = document.getElementById('history-viewer-content')?.innerText || '';
+                navigator.clipboard.writeText(content).then(() => {
+                    const btn = document.getElementById('hv-btn-copy');
+                    if (btn) { const orig = btn.innerText; btn.innerText = 'Copiado!'; setTimeout(() => { btn.innerText = orig; }, 1500); }
+                }).catch(() => {});
+            });
+            document.getElementById('hv-btn-chat')?.addEventListener('click', openHistoryInChat);
+            document.getElementById('history-viewer-overlay')?.addEventListener('click', (e) => {
+                if (e.target.id === 'history-viewer-overlay') closeHistoryViewerModal();
+            });
         });
     </script>
 </body>

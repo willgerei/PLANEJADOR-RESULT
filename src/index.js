@@ -498,6 +498,29 @@ function initializeContentChatTables() {
 
         db.run(`CREATE INDEX IF NOT EXISTS idx_content_conversations_user ON content_conversations(user_id, updated_at)`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_content_messages_conversation ON content_messages(conversation_id, created_at)`);
+
+        db.run(`
+            CREATE TABLE IF NOT EXISTS content_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                doctor_id INTEGER NOT NULL,
+                conversation_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (doctor_id) REFERENCES doctors(id),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        `, (err) => {
+            if (err) {
+                console.error("[SQLite] Falha ao garantir a tabela 'content_history':", err.message);
+                return;
+            }
+            console.log("[SQLite] Tabela 'content_history' pronta para uso.");
+        });
+
+        db.run(`CREATE INDEX IF NOT EXISTS idx_content_history_user ON content_history(user_id, created_at)`);
     });
 }
 
@@ -1943,6 +1966,10 @@ app.get('/planejamento', ensureAuthenticated, (req, res) => {
     renderMainPage(req, res, { activePage: 'planejamento' });
 });
 
+app.get('/historico', ensureAuthenticated, (req, res) => {
+    renderMainPage(req, res, { activePage: 'historico' });
+});
+
 app.get('/clientes', ensureAuthenticated, (req, res) => {
     renderMainPage(req, res, { activePage: 'clientes' });
 });
@@ -2358,6 +2385,126 @@ app.post('/api/content/messages/:id/dislike', ensureAuthenticated, async (req, r
         return res.status(500).json({ error: 'Falha ao registrar dislike: ' + error.message });
     }
 });
+
+// ── Histórico de Criações ──────────────────────────────────────────────────
+
+app.get('/api/history', ensureAuthenticated, async (req, res) => {
+    try {
+        const rows = await dbAll(
+            `SELECT h.id, h.name, h.created_at,
+                    d.name AS doctor_name,
+                    u.display_name AS user_name
+             FROM content_history h
+             INNER JOIN doctors d ON d.id = h.doctor_id
+             INNER JOIN users u ON u.id = h.user_id
+             WHERE h.user_id = ?
+             ORDER BY h.created_at DESC`,
+            [req.user.id]
+        );
+        return res.json({ data: rows });
+    } catch (error) {
+        console.error('[History] Falha ao listar histórico:', error.message);
+        return res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/history', ensureAuthenticated, async (req, res) => {
+    const messageId = String(req.body.messageId || '').trim();
+    const name = String(req.body.name || '').trim();
+
+    if (!messageId || !name) {
+        return res.status(400).json({ error: 'messageId e name são obrigatórios.' });
+    }
+
+    try {
+        const message = await getContentMessageForUser(messageId, req.user.id);
+        if (!message) return res.status(404).json({ error: 'Mensagem não encontrada.' });
+        if (message.role !== 'assistant') {
+            return res.status(400).json({ error: 'Apenas mensagens da IA podem ser salvas no histórico.' });
+        }
+
+        const result = await dbRun(
+            `INSERT INTO content_history (name, doctor_id, conversation_id, message_id, user_id, content)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [name, message.doctor_id, message.conversation_id, message.id, req.user.id, message.message]
+        );
+
+        const newItem = await dbGet(`SELECT * FROM content_history WHERE id = ?`, [result.lastID]);
+
+        // Registrar like no sistema de feedback existente
+        const cleanCopy = cleanCopyForFeedback(message.message);
+        const feedbackText = `Usuário gostou da copy: ${cleanCopy}`;
+        await addContentMessage({
+            conversationId: message.conversation_id,
+            role: 'system_event',
+            message: feedbackText,
+            messageType: 'positive_feedback'
+        });
+
+        try {
+            const auth = await getGoogleAuthOrRespond(req, res);
+            if (auth) {
+                await persistDoctorFeedback({
+                    doctorId: message.doctor_id,
+                    feedbackText,
+                    userName: req.user?.displayName || 'Usuário',
+                    auth
+                });
+            }
+        } catch (driveError) {
+            // Drive falhou, mas o item foi salvo localmente — não interrompe o fluxo
+            console.warn('[History] Falha ao persistir feedback no Drive:', driveError.message);
+        }
+
+        return res.status(201).json({ id: newItem.id, name: newItem.name, created_at: newItem.created_at });
+    } catch (error) {
+        console.error('[History] Falha ao salvar no histórico:', error.message);
+        return res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/history/:id', ensureAuthenticated, async (req, res) => {
+    const historyId = String(req.params.id || '').trim();
+    try {
+        const item = await dbGet(
+            `SELECT h.*, d.name AS doctor_name, u.display_name AS user_name
+             FROM content_history h
+             INNER JOIN doctors d ON d.id = h.doctor_id
+             INNER JOIN users u ON u.id = h.user_id
+             WHERE h.id = ? AND h.user_id = ?`,
+            [historyId, req.user.id]
+        );
+        if (!item) return res.status(404).json({ error: 'Item não encontrado.' });
+        return res.json(item);
+    } catch (error) {
+        console.error('[History] Falha ao buscar item:', error.message);
+        return res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/history/:id/restore', ensureAuthenticated, async (req, res) => {
+    const historyId = String(req.params.id || '').trim();
+    try {
+        const item = await dbGet(
+            `SELECT h.* FROM content_history h WHERE h.id = ? AND h.user_id = ?`,
+            [historyId, req.user.id]
+        );
+        if (!item) return res.status(404).json({ error: 'Item não encontrado.' });
+
+        const { conversationId, assistantMessage } = await createContentConversationFromGeneration({
+            request: { doctorId: item.doctor_id, prompt: item.name },
+            copy: item.content,
+            userId: req.user.id
+        });
+
+        return res.json({ conversationId, doctorId: item.doctor_id, assistantMessage });
+    } catch (error) {
+        console.error('[History] Falha ao restaurar item no chat:', error.message);
+        return res.status(500).json({ error: error.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.post('/api/content/conversations/:id/export', ensureAuthenticated, async (req, res) => {
     const conversationId = String(req.params.id || '').trim();
