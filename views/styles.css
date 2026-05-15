@@ -2358,6 +2358,31 @@ textarea:focus {
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: color 0.15s;
+}
+
+.history-list-header .history-col:hover {
+    color: var(--text-main);
+}
+
+.history-list-header .history-col.sort-active {
+    color: var(--accent, #4f8ef7);
+}
+
+.history-sort-icon {
+    font-style: normal;
+    font-size: 0.7rem;
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+
+.sort-active .history-sort-icon {
+    opacity: 1;
 }
 
 .history-list-row {
@@ -2383,7 +2408,7 @@ textarea:focus {
 }
 
 .history-col-title {
-    flex: 3;
+    flex: 6;
     min-width: 0;
     font-weight: 500;
 }

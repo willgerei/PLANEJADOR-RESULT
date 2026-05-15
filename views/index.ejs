@@ -329,11 +329,11 @@
                     </div>
 
                     <div class="history-list-container">
-                        <div class="history-list-header">
-                            <span class="history-col history-col-title">Título</span>
-                            <span class="history-col history-col-client">Cliente</span>
-                            <span class="history-col history-col-atendimento">Atendimento</span>
-                            <span class="history-col history-col-date">Data</span>
+                        <div class="history-list-header" id="history-list-header">
+                            <span class="history-col history-col-title" data-col="name">Título <em class="history-sort-icon">↕</em></span>
+                            <span class="history-col history-col-client" data-col="doctor_name">Cliente <em class="history-sort-icon">↕</em></span>
+                            <span class="history-col history-col-atendimento" data-col="user_name">Atendimento <em class="history-sort-icon">↕</em></span>
+                            <span class="history-col history-col-date sort-active" data-col="created_at">Data <em class="history-sort-icon">↓</em></span>
                         </div>
                         <div id="history-list-body">
                             <div class="history-empty-state">Nenhuma criação salva ainda. Dê um like em um conteúdo gerado para adicioná-lo aqui.</div>
@@ -3568,6 +3568,52 @@
         }
 
         // ── HISTÓRICO: Lista ──────────────────────────────────────────────────────
+        let _historyAllItems = [];
+        let _historySort = { col: 'created_at', dir: 'desc' };
+
+        function _renderHistoryRows() {
+            const body = document.getElementById('history-list-body');
+            if (!body) return;
+
+            const { col, dir } = _historySort;
+            const sorted = [..._historyAllItems].sort((a, b) => {
+                let va = a[col] || '';
+                let vb = b[col] || '';
+                if (col === 'created_at') {
+                    va = va ? new Date(va).getTime() : 0;
+                    vb = vb ? new Date(vb).getTime() : 0;
+                    return dir === 'asc' ? va - vb : vb - va;
+                }
+                va = va.toString().toLowerCase();
+                vb = vb.toString().toLowerCase();
+                if (va < vb) return dir === 'asc' ? -1 : 1;
+                if (va > vb) return dir === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            body.innerHTML = sorted.map(item => {
+                const date = item.created_at ? new Date(item.created_at).toLocaleDateString('pt-BR') : '—';
+                return `<div class="history-list-row" data-id="${item.id}" role="button" tabindex="0" title="${(item.name || '').replace(/"/g, '&quot;')}">
+                    <span class="history-col history-col-title">${escapeHtml(item.name || '—')}</span>
+                    <span class="history-col history-col-client">${escapeHtml(item.doctor_name || '—')}</span>
+                    <span class="history-col history-col-atendimento">${escapeHtml(item.user_name || '—')}</span>
+                    <span class="history-col history-col-date">${date}</span>
+                </div>`;
+            }).join('');
+
+            body.querySelectorAll('.history-list-row').forEach(row => {
+                row.addEventListener('click', () => openHistoryItemModal(row.dataset.id));
+                row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') openHistoryItemModal(row.dataset.id); });
+            });
+
+            document.querySelectorAll('#history-list-header .history-col').forEach(th => {
+                const isActive = th.dataset.col === col;
+                th.classList.toggle('sort-active', isActive);
+                const icon = th.querySelector('.history-sort-icon');
+                if (icon) icon.textContent = isActive ? (dir === 'asc' ? '↑' : '↓') : '↕';
+            });
+        }
+
         async function loadHistoryList() {
             const body = document.getElementById('history-list-body');
             if (!body) return;
@@ -3583,20 +3629,20 @@
                     return;
                 }
 
-                body.innerHTML = data.data.map(item => {
-                    const date = item.created_at ? new Date(item.created_at).toLocaleDateString('pt-BR') : '—';
-                    const title = (item.name || '').length > 60 ? item.name.slice(0, 60) + '…' : (item.name || '—');
-                    return `<div class="history-list-row" data-id="${item.id}" role="button" tabindex="0" title="${(item.name || '').replace(/"/g, '&quot;')}">
-                        <span class="history-col history-col-title">${escapeHtml(title)}</span>
-                        <span class="history-col history-col-client">${escapeHtml(item.doctor_name || '—')}</span>
-                        <span class="history-col history-col-atendimento">${escapeHtml(item.user_name || '—')}</span>
-                        <span class="history-col history-col-date">${date}</span>
-                    </div>`;
-                }).join('');
+                _historyAllItems = data.data;
+                _historySort = { col: 'created_at', dir: 'desc' };
+                _renderHistoryRows();
 
-                body.querySelectorAll('.history-list-row').forEach(row => {
-                    row.addEventListener('click', () => openHistoryItemModal(row.dataset.id));
-                    row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') openHistoryItemModal(row.dataset.id); });
+                document.querySelectorAll('#history-list-header .history-col').forEach(th => {
+                    th.addEventListener('click', () => {
+                        const clickedCol = th.dataset.col;
+                        if (_historySort.col === clickedCol) {
+                            _historySort.dir = _historySort.dir === 'asc' ? 'desc' : 'asc';
+                        } else {
+                            _historySort = { col: clickedCol, dir: 'asc' };
+                        }
+                        _renderHistoryRows();
+                    });
                 });
             } catch (error) {
                 body.innerHTML = `<div class="history-empty-state">Erro ao carregar: ${escapeHtml(error.message)}</div>`;
